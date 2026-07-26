@@ -17,6 +17,10 @@ const TIMER_INTERVAL: u64 = 1_000_000;
 
 #[no_mangle]
 pub extern "C" fn rust_trap_handler(tf: &mut TrapFrame) {
+    // Guardar la dirección del TrapFrame actual de la tarea activa
+    unsafe {
+        crate::task::SCHEDULER.tasks[crate::task::SCHEDULER.current_id].tf_addr = tf as *mut _ as usize;
+    }
     let scause: usize;
     let stval: usize;
     unsafe {
@@ -71,6 +75,36 @@ pub extern "C" fn rust_trap_handler(tf: &mut TrapFrame) {
                             sbi::print_str(s);
                         }
                         tf.regs[10] = 0; // Retornar 0 (éxito) en a0
+                        tf.sepc += 4;
+                    }
+                    4 => { // sys_ipc_send
+                        let dest_id = tf.regs[10];
+                        let msg_ptr = tf.regs[11];
+                        let res = crate::task::sys_ipc_send(dest_id, msg_ptr);
+                        tf.regs[10] = res as usize;
+                        tf.sepc += 4;
+                    }
+                    5 => { // sys_ipc_recv
+                        let src_id = tf.regs[10];
+                        let msg_ptr = tf.regs[11];
+                        let res = crate::task::sys_ipc_recv(src_id, msg_ptr);
+                        tf.regs[10] = res as usize;
+                        tf.sepc += 4;
+                    }
+                    6 => { // sys_ipc_reply_recv
+                        let dest_id = tf.regs[10];
+                        let reply_msg_ptr = tf.regs[11];
+                        let src_id = tf.regs[12];
+                        let recv_msg_ptr = tf.regs[13];
+                        let res = crate::task::sys_ipc_reply_recv(dest_id, reply_msg_ptr, src_id, recv_msg_ptr);
+                        tf.regs[10] = res as usize;
+                        tf.sepc += 4;
+                    }
+                    7 => { // sys_ipc_notify
+                        let dest_id = tf.regs[10];
+                        let bits = tf.regs[11] as u32;
+                        let res = crate::task::sys_ipc_notify(dest_id, bits);
+                        tf.regs[10] = res as usize;
                         tf.sepc += 4;
                     }
                     _ => {

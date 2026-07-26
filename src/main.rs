@@ -58,11 +58,12 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     sbi::print_str("[Kernel] Retorno de ebreak exitoso!\n");
 
     // Calcular dirección del entry point del usuario usando el mapeo virtual U-mode (offset -0x40000000)
-    let user_entry_va = (user_task as *const () as usize) - 0x40000000;
-    // Crear y registrar tareas secundarias (Tarea 1 en Modo Usuario, Tarea 2 en Modo Supervisor)
-    task::create_user_task(1, user_entry_va);
-    task::create_task(2, task2);
-    sbi::print_str("[Kernel] Tareas concurrentes 1 (User) y 2 (Kernel) creadas.\n");
+    let user_entry_va1 = (user_task as *const () as usize) - 0x40000000;
+    let user_entry_va2 = (user_task2 as *const () as usize) - 0x40000000;
+    // Crear y registrar tareas secundarias (Tarea 1 y Tarea 2 en Modo Usuario)
+    task::create_user_task(1, user_entry_va1);
+    task::create_user_task(2, user_entry_va2);
+    sbi::print_str("[Kernel] Tareas de usuario 1 (Cliente) y 2 (Servidor) creadas.\n");
     sbi::print_str("[Kernel] Iniciando planificador multitarea...\n");
 
     let mut count = 0;
@@ -95,48 +96,135 @@ fn user_print(s: &str) {
 }
 
 fn user_task() {
-    let mut count = 0;
-    loop {
-        user_print("[U-Mode] Hola desde la tarea de espacio de usuario!\n");
+    let mut msg = crate::task::IpcMessage {
+        sender: 0,
+        msg_type: 100, // Tipo petición
+        length: 8,
+        reserved: 0,
+        payload: [0; 32],
+    };
+    msg.payload[0] = 0xDE;
+    msg.payload[1] = 0xAD;
+    msg.payload[2] = 0xBE;
+    msg.payload[3] = 0xEF;
 
-        // Llamada al sistema sys_yield (syscall_id = 1)
+    user_print("[Client] Iniciado. Enviando mensaje de peticion a Server (Tarea 2)...\n");
+    
+    let mut res: isize;
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") 4, // sys_ipc_send
+            in("a0") 2, // Dest: Tarea 2
+            in("a1") &msg as *const _ as usize,
+            lateout("a0") res
+        );
+    }
+    
+    if res == 0 {
+        user_print("[Client] Mensaje enviado! Esperando respuesta de Server...\n");
+        #[allow(unused_mut)]
+        let mut reply = crate::task::IpcMessage {
+            sender: 0,
+            msg_type: 0,
+            length: 0,
+            reserved: 0,
+            payload: [0; 32],
+        };
         unsafe {
             core::arch::asm!(
                 "ecall",
-                in("a7") 1
+                in("a7") 5, // sys_ipc_recv
+                in("a0") 2, // Src: Tarea 2
+                in("a1") &reply as *const _ as usize,
+                lateout("a0") res
             );
         }
-
-        count += 1;
-        if count == 5 {
-            user_print("[U-Mode] Tarea finalizada, llamando a sys_exit...\n");
-            // Llamada al sistema sys_exit (syscall_id = 2)
-            unsafe {
-                core::arch::asm!(
-                    "ecall",
-                    in("a7") 2
-                );
+        if res == 0 {
+            user_print("[Client] Respuesta recibida de Server con exito!\n");
+            if reply.payload[0] == 0xCA && reply.payload[1] == 0xFE {
+                user_print("[Client] Servidor respondio correctamente con CAFE!\n");
             }
+        } else {
+            user_print("[Client] Error al recibir respuesta.\n");
         }
-        for _ in 0..200000 {
-            unsafe { core::arch::asm!("nop"); }
-        }
+    } else {
+        user_print("[Client] Error al enviar mensaje.\n");
+    }
+
+    user_print("[Client] Tarea finalizada, llamando a sys_exit...\n");
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") 2 // sys_exit
+        );
     }
 }
 
-fn task2() {
-    let mut count = 0;
-    loop {
-        sbi::print_str("B");
-        count += 1;
-        if count == 120 {
-            sbi::print_str("\n[Task 2] Cediendo CPU de forma cooperativa...\n");
-            task::yield_cpu();
-            count = 0;
+fn user_task2() {
+    #[allow(unused_mut)]
+    let mut req = crate::task::IpcMessage {
+        sender: 0,
+        msg_type: 0,
+        length: 0,
+        reserved: 0,
+        payload: [0; 32],
+    };
+    
+    user_print("[Server] Iniciado. Esperando peticion de Client (Tarea 1)...\n");
+    
+    let mut res: isize;
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") 5, // sys_ipc_recv
+            in("a0") 1, // Src: Tarea 1
+            in("a1") &req as *const _ as usize,
+            lateout("a0") res
+        );
+    }
+    
+    if res == 0 {
+        user_print("[Server] Peticion recibida de Client!\n");
+        if req.payload[0] == 0xDE && req.payload[1] == 0xAD {
+            user_print("[Server] Cliente envio DEADBEEF!\n");
         }
-        for _ in 0..200000 {
-            unsafe { core::arch::asm!("nop"); }
+        
+        let mut reply = crate::task::IpcMessage {
+            sender: 0,
+            msg_type: 200, // Tipo respuesta
+            length: 8,
+            reserved: 0,
+            payload: [0; 32],
+        };
+        reply.payload[0] = 0xCA;
+        reply.payload[1] = 0xFE;
+        reply.payload[2] = 0xBA;
+        reply.payload[3] = 0xBE;
+        
+        user_print("[Server] Enviando respuesta a Client...\n");
+        unsafe {
+            core::arch::asm!(
+                "ecall",
+                in("a7") 4, // sys_ipc_send
+                in("a0") 1, // Dest: Tarea 1
+                in("a1") &reply as *const _ as usize,
+                lateout("a0") res
+            );
         }
+        if res == 0 {
+            user_print("[Server] Respuesta enviada con exito!\n");
+        }
+    } else {
+        user_print("[Server] Error al recibir peticion.\n");
+    }
+    
+    user_print("[Server] Tarea finalizada, llamando a sys_exit...\n");
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") 2 // sys_exit
+        );
     }
 }
 
