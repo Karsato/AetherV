@@ -212,6 +212,8 @@ pub fn create_user_task(id: usize, entry: usize) {
         // Limpiar el TrapFrame inicial al tope de la pila del kernel de la tarea
         let kstack_top = &task.kstack as *const [u8; 4096] as usize + 4096;
         let tf_ptr = (kstack_top - core::mem::size_of::<crate::trap::TrapFrame>()) as *mut crate::trap::TrapFrame;
+
+
         
         // Escribir TrapFrame vacío
         core::ptr::write_volatile(tf_ptr, crate::trap::TrapFrame {

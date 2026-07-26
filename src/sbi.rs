@@ -4,8 +4,9 @@ pub fn sbi_putchar(c: usize) {
         core::arch::asm!(
             "li a7, 1",
             "ecall",
-            in("a0") c,
+            inout("a0") c => _,
             out("a7") _,
+            clobber_abi("C"),
         );
     }
 }
@@ -23,9 +24,10 @@ pub fn sbi_set_timer(time: u64) {
             "li a7, 0x54494D45", // Timer Extension ID
             "li a6, 0",          // Set Timer Function ID
             "ecall",
-            in("a0") time,
+            inout("a0") time => _,
             out("a7") _,
             out("a6") _,
+            clobber_abi("C"),
         );
     }
 }

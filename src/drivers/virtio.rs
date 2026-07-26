@@ -143,9 +143,12 @@ impl VirtqueueLayout {
 pub fn find_device(device_id: u32) -> Option<usize> {
     for slot in 0..8 {
         let base = 0x10001000 + slot * 0x1000;
-        let regs = unsafe { &*(base as *const VirtioMmioregs) };
-        if regs.magic == 0x74726976 && regs.device_id == device_id {
-            return Some(base);
+        unsafe {
+            let magic = core::ptr::read_volatile(base as *const u32);
+            let dev_id = core::ptr::read_volatile((base + 8) as *const u32);
+            if magic == 0x74726976 && dev_id == device_id {
+                return Some(base);
+            }
         }
     }
     None

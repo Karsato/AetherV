@@ -99,32 +99,31 @@ pub struct IpcMessage {
 
 ### Módulo 3: Drivers en Espacio de Usuario (User-Space Drivers)
 
-Para garantizar la estabilidad del sistema, los controladores VirtIO GPU y VirtIO Input se extraerán del kernel y se ejecutarán como servidores independientes de usuario.
-
-```
-+-------------------------------------------------------------+
-|                        USER SPACE                           |
-|  +-------------------+               +-------------------+  |
-|  | Aplicación Usuario|               | Driver GPU User   |  |
-|  +---------┬---------+               +---------▲---------+  |
-|            │ (Llamada de dibujo)               │ Mapeo MMIO |
-|            │ IPC (Send)                        │ 0x10008000 |
-+────────────┼───────────────────────────────────┼────────────+
-|            ▼                                   │            |
-|  +─────────────────────────────────────────────┴─────────+  |
-|  |                   KERNEL (S-MODE)                     |  |
-|  |  * Despachador de Interrupciones PLIC -> IPC Notify   |  |
-|  |  * Rutas de Memoria Virtual (Sv39 con PTE_U en MMIO)  |  |
-|  +-------------------------------------------------------+  |
-+-------------------------------------------------------------+
-```
+Para garantizar la estabilidad del sistema, el controlador VirtIO GPU se ha extraído del kernel y se ejecuta como un servidor independiente en espacio de usuario (U-Mode).
 
 #### 1. Mapeo de E/S en Modo Usuario (MMIO Mapped)
-El kernel otorgará privilegios de hardware selectivos mapeando la página física del dispositivo VirtIO directamente en la tabla de páginas del proceso del controlador de usuario:
-* **VirtIO GPU:** Mapear el rango físico `0x10008000`–`0x10009000` con flags `PTE_U | PTE_R | PTE_W`.
-* El proceso driver de usuario leerá/escribirá de forma directa en los registros MMIO del dispositivo, reduciendo la sobrecarga de syscalls para operar la GPU.
+El kernel otorga privilegios de hardware selectivos mapeando la página física de registros del dispositivo VirtIO GPU directamente en la tabla de páginas:
+* **VirtIO GPU:** Mapear el rango físico `0x10008000`–`0x10009000` con flags `PTE_R | PTE_W | PTE_U` en [src/paging.rs](file:///home/carlos/PARA/2-frecuente/00/AetherV/src/paging.rs).
+* Esto permite que el proceso del driver de usuario acceda directamente a los registros MMIO del dispositivo GPU sin coste de transición de privilegios.
 
-#### 2. Delegación de Interrupciones Físicas a U-Mode
+#### 2. Traducción de Direcciones Virtuales a Físicas (Capa de DMA en U-Mode)
+Puesto que los dispositivos VirtIO realizan transferencias de hardware DMA directamente leyendo y escribiendo de la RAM física, requieren direcciones físicas reales para la Virtqueue y los buffers de comandos/respuestas. Al ejecutarse en U-Mode bajo el espacio de direccionamiento virtual desplazado con el alias `0x40000000`, el driver de usuario debe realizar la traducción de punteros antes de pasarlos a la GPU.
+* **Capa de traducción (`to_physical`):** Traduce direcciones virtuales de U-Mode (`0x40xxxxxx`) a sus correspondientes direcciones físicas (`0x80xxxxxx`) mediante el offset de alias:
+  ```rust
+  fn to_physical(addr: usize) -> usize {
+      if addr < 0x80000000 {
+          addr + 0x40000000
+      } else {
+          addr
+      }
+  }
+  ```
+* Se aplica a las colas de descriptores (`queue_desc_lo`, `queue_avail_lo`, `queue_used_lo`), a las peticiones del canal (`send_command`) y a las entradas de páginas enlazadas al Framebuffer (`ATTACH_BACKING`).
+
+#### 3. Corrección Crítica del Trap Handler (Preservación de `t0` / `x5`)
+Durante el desarrollo del driver de usuario, se detectó que el registro temporario `t0` (`x5`) se corrompía al ingresar a cualquier trampa o llamada al sistema en [src/trap.S](file:///home/carlos/PARA/2-frecuente/00/AetherV/src/trap.S) (dado que se utilizaba para calcular la pila de kernel e interactuar con `sscratch` antes de guardarse). Esto provocaba que las variables de dirección del framebuffer quedaran en `0x0`. Se solucionó guardando `t0` en su slot designado del `TrapFrame` (`40(sp)`) inmediatamente al iniciar la trampa y restaurándolo antes de conmutar a `save_rest_and_call`.
+
+#### 4. Delegación de Interrupciones Físicas a U-Mode
 1. El dispositivo (ej. VirtIO Input) genera una interrupción de hardware externa.
 2. El PLIC encamina la interrupción y el núcleo la intercepta en `rust_trap_handler`.
 3. El kernel realiza un "Acknowledge" de la interrupción en el PLIC.
@@ -178,9 +177,11 @@ sequenceDiagram
   - [x] Crear el despachador de llamadas del sistema de IPC (`sys_ipc_send`, `sys_ipc_recv`, `sys_ipc_reply_recv` y `sys_ipc_notify`).
   - [x] Desarrollar la lógica de bloqueo/desbloqueo de tareas (`BlockedSend`, `BlockedRecv`) en el planificador Round-Robin del kernel.
   - [x] Escribir y validar de forma exitosa en simulación de QEMU el flujo de comunicación síncrona cliente-servidor (Rendezvous con envío de `DEADBEEF` y recepción de respuesta `CAFE` entre tareas de U-Mode).
-- [ ] **Paso 3: Extraer el Controlador VirtIO GPU a U-Mode**
-  - [ ] Mapear la página física de la GPU con el bit `PTE_U` en el proceso del driver gráfico.
-  - [ ] Migrar el código de `init()` y transferencia de buffers al ejecutable del driver de espacio de usuario.
+- [x] **Paso 3: Extraer el Controlador VirtIO GPU a U-Mode** (Completado)
+  - [x] Mapear la página física de la GPU (`0x10008000`) con el bit `PTE_U` en la tabla de páginas del kernel en [src/paging.rs](file:///home/carlos/PARA/2-frecuente/00/AetherV/src/paging.rs).
+  - [x] Migrar el código de `init()`, colas de Virtqueue, buffers de canal y renderizado local al driver en espacio de usuario (`gpu_driver_server` en [src/main.rs](file:///home/carlos/PARA/2-frecuente/00/AetherV/src/main.rs)).
+  - [x] Implementar la función de traducción `to_physical` en [src/drivers/gpu.rs](file:///home/carlos/PARA/2-frecuente/00/AetherV/src/drivers/gpu.rs) para convertir punteros virtuales del espacio de usuario (`0x40xxxxxx`) a direcciones físicas reales (`0x80xxxxxx`) necesarias para las transferencias DMA del hardware.
+  - [x] Validar de forma síncrona mediante llamadas IPC: la tarea `gpu_client` envía una petición para rellenar la pantalla de azul y posteriormente restaura el degradado cromático mediante mensajes síncronos enviados al servidor gráfico en U-Mode.
 - [ ] **Paso 4: Diseñar el Registro de Nombres del Sistema (Name Server)**
   - [ ] Programar una estructura interna de búsqueda (`BTreeMap` o `Vec`) indexando nombres de servicios contra puertos IPC activos del kernel.
 
@@ -191,3 +192,5 @@ sequenceDiagram
 - [AetherV_OS_Roadmap.md](file:///home/carlos/PARA/2-frecuente/00/AetherV/AetherV_OS_Roadmap.md)
 - [src/task.rs](file:///home/carlos/PARA/2-frecuente/00/AetherV/src/task.rs)
 - [src/trap.rs](file:///home/carlos/PARA/2-frecuente/00/AetherV/src/trap.rs)
+- [src/trap.S](file:///home/carlos/PARA/2-frecuente/00/AetherV/src/trap.S)
+- [src/drivers/gpu.rs](file:///home/carlos/PARA/2-frecuente/00/AetherV/src/drivers/gpu.rs)

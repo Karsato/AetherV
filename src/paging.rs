@@ -207,13 +207,13 @@ pub fn init() {
         &mut allocator,
     );
 
-    // 2. Mapeo VirtIO MMIO (0x1000_1000 - 0x1000_9000)
+    // 2. Mapeo VirtIO MMIO (0x1000_1000 - 0x1000_9000) - R-W-U para permitir drivers en U-mode
     map_range(
         unsafe { &mut KERNEL_PGTABLE },
         0x1000_1000,
         0x1000_1000,
         0x8000,
-        PTE_R | PTE_W,
+        PTE_R | PTE_W | PTE_U,
         &mut allocator,
     );
 

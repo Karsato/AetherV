@@ -1,6 +1,35 @@
 #![allow(static_mut_refs)]
 // Controlador de la GPU virtual de VirtIO (Device ID 16)
-use crate::sbi;
+fn gpu_print(s: &str) {
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") 3,
+            inout("a0") s.as_ptr() as usize => _,
+            in("a1") s.len(),
+            clobber_abi("C"),
+        );
+    }
+}
+
+fn gpu_print_hex(val: usize) {
+    let mut buf = [0u8; 18];
+    buf[0] = b'0';
+    buf[1] = b'x';
+    let mut temp = val;
+    for i in (2..18).rev() {
+        let nibble = (temp & 0xF) as u8;
+        buf[i] = match nibble {
+            0..=9 => b'0' + nibble,
+            10..=15 => b'a' + (nibble - 10),
+            _ => unreachable!(),
+        };
+        temp >>= 4;
+    }
+    if let Ok(s) = core::str::from_utf8(&buf) {
+        gpu_print(s);
+    }
+}
 use crate::drivers::virtio::{
     VirtqueueLayout, find_device,
     VIRTIO_STATUS_ACKNOWLEDGE, VIRTIO_STATUS_DRIVER,
@@ -159,6 +188,14 @@ unsafe fn read_reg(base: usize, offset: usize) -> u32 {
     core::ptr::read_volatile((base + offset) as *const u32)
 }
 
+fn to_physical(addr: usize) -> usize {
+    if addr < 0x80000000 {
+        addr + 0x40000000
+    } else {
+        addr
+    }
+}
+
 // Envía un comando síncrono al dispositivo GPU rellenando la Virtqueue y esperando respuesta
 unsafe fn send_command(
     base: usize,
@@ -170,13 +207,13 @@ unsafe fn send_command(
     let queue = &mut GPU_CONTROL_QUEUE;
 
     // Descriptor 0: Datos de petición (Lectura para el dispositivo)
-    queue.descriptors[0].addr = req_pa as u64;
+    queue.descriptors[0].addr = to_physical(req_pa) as u64;
     queue.descriptors[0].len = req_len as u32;
     queue.descriptors[0].flags = VIRTQ_DESC_F_NEXT;
     queue.descriptors[0].next = 1;
 
     // Descriptor 1: Datos de respuesta (Escritura para el dispositivo)
-    queue.descriptors[1].addr = resp_pa as u64;
+    queue.descriptors[1].addr = to_physical(resp_pa) as u64;
     queue.descriptors[1].len = resp_len as u32;
     queue.descriptors[1].flags = VIRTQ_DESC_F_WRITE;
     queue.descriptors[1].next = 0;
@@ -204,25 +241,28 @@ unsafe fn send_command(
     }
 }
 
+pub static mut GPU_ACTIVE: bool = false;
+
 // Inicialización del subsistema gráfico
 pub fn init() {
     let base = match find_device(16) { // ID 16 = GPU
         Some(b) => b,
         None => {
-            sbi::print_str("[GPU] Dispositivo VirtIO GPU no encontrado en ranuras MMIO.\n");
+            gpu_print("[GPU] Dispositivo VirtIO GPU no encontrado en ranuras MMIO.\n");
+            unsafe { GPU_ACTIVE = false; }
             return;
         }
     };
 
-    sbi::print_str("[GPU] Inicializando dispositivo gráfico en base MMIO: ");
-    sbi::print_hex(base);
-    sbi::print_str("\n");
+    gpu_print("[GPU] Inicializando dispositivo gráfico en base MMIO: ");
+    gpu_print_hex(base);
+    gpu_print("\n");
 
     unsafe {
         let version = read_reg(base, 0x04);
-        sbi::print_str("[GPU] Versión del hardware VirtIO detectada: ");
-        sbi::print_hex(version as usize);
-        sbi::print_str("\n");
+        gpu_print("[GPU] Versión del hardware VirtIO detectada: ");
+        gpu_print_hex(version as usize);
+        gpu_print("\n");
 
         // 1. Reiniciar
         write_reg(base, 0x70, 0); // status = 0
@@ -243,7 +283,7 @@ pub fn init() {
             write_reg(base, 0x70, status);
             let check_status = read_reg(base, 0x70);
             if (check_status & 8) == 0 {
-                sbi::print_str("[GPU ERROR] FEATURES_OK no soportado por el dispositivo!\n");
+                gpu_print("[GPU ERROR] FEATURES_OK no soportado por el dispositivo!\n");
                 return;
             }
         }
@@ -252,17 +292,18 @@ pub fn init() {
         write_reg(base, 0x30, 0); // queue_sel = 0
         let max_num = read_reg(base, 0x34); // queue_num_max
         if max_num < 32 {
-            sbi::print_str("[GPU ERROR] queue_num_max de GPU es menor a 32!\n");
+            gpu_print("[GPU ERROR] queue_num_max de GPU es menor a 32!\n");
             return;
         }
         write_reg(base, 0x38, 32); // queue_num = 32
 
         let queue_pa = &raw const GPU_CONTROL_QUEUE as *const VirtqueueLayout as usize;
+        let desc_pa = to_physical(queue_pa);
 
         if version == 2 {
-            let desc_pa = queue_pa;
-            let avail_pa = queue_pa + 512;
-            let used_pa = queue_pa + 4096;
+            let desc_pa = to_physical(queue_pa);
+            let avail_pa = to_physical(queue_pa + 512);
+            let used_pa = to_physical(queue_pa + 4096);
 
             write_reg(base, 0x80, desc_pa as u32); // queue_desc_lo
             write_reg(base, 0x84, (desc_pa >> 32) as u32); // queue_desc_hi
@@ -275,13 +316,14 @@ pub fn init() {
         } else {
             write_reg(base, 0x28, 4096); // guest_page_size = 4096
             write_reg(base, 0x3c, 4096); // queue_align = 4096
-            write_reg(base, 0x40, (queue_pa >> 12) as u32); // queue_pfn
+            let pfn = desc_pa >> 12;
+            write_reg(base, 0x40, pfn as u32); // queue_pfn
         }
 
         // 5. Activar E/S del dispositivo
         status |= VIRTIO_STATUS_DRIVER_OK;
         write_reg(base, 0x70, status);
-        sbi::print_str("[GPU] Handshake de inicialización VirtIO exitoso.\n");
+        gpu_print("[GPU] Handshake de inicialización VirtIO exitoso.\n");
 
         // 6. Crear recurso 2D en QEMU
         let chan = &mut GPU_CHAN;
@@ -301,18 +343,18 @@ pub fn init() {
         );
 
         if chan.resp.type_ != 0x1100 {
-            sbi::print_str("[GPU ERROR] No se pudo crear el recurso 2D. Respuesta: ");
-            sbi::print_hex(chan.resp.type_ as usize);
-            sbi::print_str("\n");
+            gpu_print("[GPU ERROR] No se pudo crear el recurso 2D. Respuesta: ");
+            gpu_print_hex(chan.resp.type_ as usize);
+            gpu_print("\n");
             return;
         }
-        sbi::print_str("[GPU] Recurso gráfico 2D configurado con resolución 640x480.\n");
+        gpu_print("[GPU] Recurso gráfico 2D configurado con resolución 640x480.\n");
 
         // 7. Enlazar Framebuffer de RAM física (Mapeo página por página para compatibilidad con QEMU)
         chan.req_attach.hdr.type_ = VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING;
         chan.req_attach.resource_id = 1;
         chan.req_attach.nr_entries = 300;
-        let fb_addr = &raw const FRAMEBUFFER as *const Framebuffer as u64;
+        let fb_addr = to_physical(&raw const FRAMEBUFFER as *const Framebuffer as usize) as u64;
         for i in 0..300 {
             chan.req_attach.entries[i].addr = fb_addr + (i * 4096) as u64;
             chan.req_attach.entries[i].len = 4096;
@@ -329,12 +371,12 @@ pub fn init() {
         );
 
         if chan.resp.type_ != 0x1100 {
-            sbi::print_str("[GPU ERROR] No se pudo enlazar el Framebuffer local. Respuesta: ");
-            sbi::print_hex(chan.resp.type_ as usize);
-            sbi::print_str("\n");
+            gpu_print("[GPU ERROR] No se pudo enlazar el Framebuffer local. Respuesta: ");
+            gpu_print_hex(chan.resp.type_ as usize);
+            gpu_print("\n");
             return;
         }
-        sbi::print_str("[GPU] Framebuffer local enlazado a la GPU de QEMU.\n");
+        gpu_print("[GPU] Framebuffer local enlazado a la GPU de QEMU.\n");
 
         // 8. Establecer pantalla principal (Scanout)
         chan.req_scanout.hdr.type_ = VIRTIO_GPU_CMD_SET_SCANOUT;
@@ -355,17 +397,18 @@ pub fn init() {
         );
 
         if chan.resp.type_ != 0x1100 {
-            sbi::print_str("[GPU ERROR] No se pudo establecer Scanout. Respuesta: ");
-            sbi::print_hex(chan.resp.type_ as usize);
-            sbi::print_str("\n");
+            gpu_print("[GPU ERROR] No se pudo establecer Scanout. Respuesta: ");
+            gpu_print_hex(chan.resp.type_ as usize);
+            gpu_print("\n");
             return;
         }
-        sbi::print_str("[GPU] Pantalla de salida asociada al recurso 1.\n");
+        gpu_print("[GPU] Pantalla de salida asociada al recurso 1.\n");
 
         // 9. Dibujar patrón degradado e iniciar transferencia
         draw_pattern();
         flush_screen(base);
-        sbi::print_str("[GPU] Patrón gráfico renderizado en pantalla.\n");
+        gpu_print("[GPU] Patrón gráfico renderizado en pantalla.\n");
+        GPU_ACTIVE = true;
     }
 }
 
@@ -387,6 +430,9 @@ pub fn draw_pattern() {
 // Sincroniza y vuelca el Framebuffer local a la pantalla de QEMU
 pub fn flush_screen(base: usize) {
     unsafe {
+        if !GPU_ACTIVE {
+            return;
+        }
         let chan = &mut GPU_CHAN;
 
         // A. Copiar datos del Framebuffer al buffer del Host

@@ -21,9 +21,11 @@ trap_from_kernel:
     
     # Guardar registros x1, x3-x31
     sd x1, 8(sp)
+    sd x5, 40(sp)        # Guardar t0 (x5) en su slot de TrapFrame primero
     # Guardar sp original (sp + 272)
     addi t0, sp, 272
     sd t0, 16(sp)
+    ld x5, 40(sp)        # Restaurar t0 (x5) original
     
     j save_rest_and_call
 
@@ -34,6 +36,7 @@ trap_from_user:
 
     # Guardar x1
     sd x1, 8(sp)
+    sd x5, 40(sp)        # Guardar t0 (x5) en su slot de TrapFrame primero
 
     # Leer pila de usuario original desde sscratch y guardarla en sp del TrapFrame
     csrr t0, sscratch
@@ -42,6 +45,7 @@ trap_from_user:
     # Poner sscratch a 0 mientras estamos en el kernel
     li t0, 0
     csrw sscratch, t0
+    ld x5, 40(sp)        # Restaurar t0 (x5) original
 
 save_rest_and_call:
     sd x3, 24(sp)

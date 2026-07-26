@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![allow(static_mut_refs)]
 
 mod entry;
 mod sbi;
@@ -43,9 +44,6 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     // Inicializar memoria virtual (Paginación Sv39)
     paging::init();
 
-    // Inicializar controlador gráfico VirtIO GPU
-    drivers::gpu::init();
-
     // Activar interrupción del temporizador
     trap::enable_timer_interrupt();
     sbi::print_str("[Kernel] Interrupciones de reloj activadas.\n");
@@ -58,8 +56,8 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     sbi::print_str("[Kernel] Retorno de ebreak exitoso!\n");
 
     // Calcular dirección del entry point del usuario usando el mapeo virtual U-mode (offset -0x40000000)
-    let user_entry_va1 = (user_task as *const () as usize) - 0x40000000;
-    let user_entry_va2 = (user_task2 as *const () as usize) - 0x40000000;
+    let user_entry_va1 = (gpu_client as *const () as usize) - 0x40000000;
+    let user_entry_va2 = (gpu_driver_server as *const () as usize) - 0x40000000;
     // Crear y registrar tareas secundarias (Tarea 1 y Tarea 2 en Modo Usuario)
     task::create_user_task(1, user_entry_va1);
     task::create_user_task(2, user_entry_va2);
@@ -88,41 +86,41 @@ fn user_print(s: &str) {
         core::arch::asm!(
             "ecall",
             in("a7") 3,
-            in("a0") ptr,
+            inout("a0") ptr => _,
             in("a1") len,
-            lateout("a0") _
+            clobber_abi("C"),
         );
     }
 }
 
-fn user_task() {
+fn gpu_client() {
+    user_print("[GPU Client] Iniciado. Solicitando al Servidor GPU rellenar la pantalla de azul...\n");
+
     let mut msg = crate::task::IpcMessage {
         sender: 0,
-        msg_type: 100, // Tipo petición
+        msg_type: 2, // Comando de color sólido
         length: 8,
         reserved: 0,
         payload: [0; 32],
     };
-    msg.payload[0] = 0xDE;
-    msg.payload[1] = 0xAD;
-    msg.payload[2] = 0xBE;
-    msg.payload[3] = 0xEF;
+    // Color azul: R=0, G=0, B=255
+    msg.payload[0] = 0;   // R
+    msg.payload[1] = 0;   // G
+    msg.payload[2] = 255; // B
 
-    user_print("[Client] Iniciado. Enviando mensaje de peticion a Server (Tarea 2)...\n");
-    
     let mut res: isize;
     unsafe {
         core::arch::asm!(
             "ecall",
             in("a7") 4, // sys_ipc_send
-            in("a0") 2, // Dest: Tarea 2
+            inout("a0") 2_isize => res, // Dest: Tarea 2 (GPU Server)
             in("a1") &msg as *const _ as usize,
-            lateout("a0") res
+            clobber_abi("C"),
         );
     }
-    
+
     if res == 0 {
-        user_print("[Client] Mensaje enviado! Esperando respuesta de Server...\n");
+        user_print("[GPU Client] Petición enviada. Esperando confirmación...\n");
         #[allow(unused_mut)]
         let mut reply = crate::task::IpcMessage {
             sender: 0,
@@ -135,96 +133,138 @@ fn user_task() {
             core::arch::asm!(
                 "ecall",
                 in("a7") 5, // sys_ipc_recv
-                in("a0") 2, // Src: Tarea 2
+                inout("a0") 2_isize => res, // Src: Tarea 2
                 in("a1") &reply as *const _ as usize,
-                lateout("a0") res
+                clobber_abi("C"),
             );
         }
-        if res == 0 {
-            user_print("[Client] Respuesta recibida de Server con exito!\n");
-            if reply.payload[0] == 0xCA && reply.payload[1] == 0xFE {
-                user_print("[Client] Servidor respondio correctamente con CAFE!\n");
-            }
+        if res == 0 && reply.msg_type == 200 {
+            user_print("[GPU Client] Pantalla azul pintada con éxito!\n");
         } else {
-            user_print("[Client] Error al recibir respuesta.\n");
+            user_print("[GPU Client] Error en la ejecución del comando gráfico.\n");
         }
     } else {
-        user_print("[Client] Error al enviar mensaje.\n");
+        user_print("[GPU Client] Error al enviar comando.\n");
     }
 
-    user_print("[Client] Tarea finalizada, llamando a sys_exit...\n");
+    // Esperar un poco y luego pintar degradado cromático original
+    for _ in 0..4000000 {
+        unsafe { core::arch::asm!("nop"); }
+    }
+
+    user_print("[GPU Client] Solicitando al Servidor GPU restaurar el patrón degradado cromático...\n");
+    msg.msg_type = 1; // Comando de degradado cromático
+
     unsafe {
         core::arch::asm!(
             "ecall",
-            in("a7") 2 // sys_exit
+            in("a7") 4, // sys_ipc_send
+            inout("a0") 2_isize => res, // Dest: Tarea 2 (GPU Server)
+            in("a1") &msg as *const _ as usize,
+            clobber_abi("C"),
+        );
+    }
+
+    if res == 0 {
+        user_print("[GPU Client] Petición enviada. Esperando confirmación...\n");
+        #[allow(unused_mut)]
+        let mut reply2 = crate::task::IpcMessage {
+            sender: 0,
+            msg_type: 0,
+            length: 0,
+            reserved: 0,
+            payload: [0; 32],
+        };
+        unsafe {
+            core::arch::asm!(
+                "ecall",
+                in("a7") 5, // sys_ipc_recv
+                inout("a0") 2_isize => res, // Src: Tarea 2
+                in("a1") &reply2 as *const _ as usize,
+                clobber_abi("C"),
+            );
+        }
+        if res == 0 && reply2.msg_type == 200 {
+            user_print("[GPU Client] Patrón degradado cromático restaurado con éxito!\n");
+        }
+    }
+
+    user_print("[GPU Client] Tarea finalizada limpiamente.\n");
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") 2, // sys_exit
+            clobber_abi("C"),
         );
     }
 }
 
-fn user_task2() {
-    #[allow(unused_mut)]
-    let mut req = crate::task::IpcMessage {
-        sender: 0,
-        msg_type: 0,
-        length: 0,
-        reserved: 0,
-        payload: [0; 32],
-    };
-    
-    user_print("[Server] Iniciado. Esperando peticion de Client (Tarea 1)...\n");
-    
-    let mut res: isize;
-    unsafe {
-        core::arch::asm!(
-            "ecall",
-            in("a7") 5, // sys_ipc_recv
-            in("a0") 1, // Src: Tarea 1
-            in("a1") &req as *const _ as usize,
-            lateout("a0") res
-        );
-    }
-    
-    if res == 0 {
-        user_print("[Server] Peticion recibida de Client!\n");
-        if req.payload[0] == 0xDE && req.payload[1] == 0xAD {
-            user_print("[Server] Cliente envio DEADBEEF!\n");
-        }
-        
-        let mut reply = crate::task::IpcMessage {
+fn gpu_driver_server() {
+    user_print("[GPU Server] Iniciando inicialización en U-Mode...\n");
+    drivers::gpu::init();
+    user_print("[GPU Server] Inicialización completada con éxito. Entrando en bucle de servicio IPC...\n");
+
+    loop {
+        #[allow(unused_mut)]
+        let mut msg = crate::task::IpcMessage {
             sender: 0,
-            msg_type: 200, // Tipo respuesta
-            length: 8,
+            msg_type: 0,
+            length: 0,
             reserved: 0,
             payload: [0; 32],
         };
-        reply.payload[0] = 0xCA;
-        reply.payload[1] = 0xFE;
-        reply.payload[2] = 0xBA;
-        reply.payload[3] = 0xBE;
-        
-        user_print("[Server] Enviando respuesta a Client...\n");
+        let mut res: isize;
         unsafe {
             core::arch::asm!(
                 "ecall",
-                in("a7") 4, // sys_ipc_send
-                in("a0") 1, // Dest: Tarea 1
-                in("a1") &reply as *const _ as usize,
-                lateout("a0") res
+                in("a7") 5, // sys_ipc_recv
+                inout("a0") crate::task::IPC_WILDCARD => res, // Src: cualquiera
+                in("a1") &msg as *const _ as usize,
+                clobber_abi("C"),
             );
         }
+
         if res == 0 {
-            user_print("[Server] Respuesta enviada con exito!\n");
+            user_print("[GPU Server] Solicitud recibida!\n");
+            match msg.msg_type {
+                1 => {
+                    user_print("[GPU Server] Comando de dibujo: draw_pattern\n");
+                    drivers::gpu::draw_pattern();
+                    drivers::gpu::flush_screen(0x10008000);
+                    msg.msg_type = 200; // Éxito
+                }
+                2 => {
+                    let r = msg.payload[0] as u32;
+                    let g = msg.payload[1] as u32;
+                    let b = msg.payload[2] as u32;
+                    user_print("[GPU Server] Comando de dibujo: rellenar color sólido\n");
+                    unsafe {
+                        let fb = &mut drivers::gpu::FRAMEBUFFER;
+                        let color_val = 0xFF000000 | (r << 16) | (g << 8) | b;
+                        for pixel in fb.pixels.iter_mut() {
+                            *pixel = color_val;
+                        }
+                    }
+                    drivers::gpu::flush_screen(0x10008000);
+                    msg.msg_type = 200; // Éxito
+                }
+                _ => {
+                    user_print("[GPU Server] Comando desconocido\n");
+                    msg.msg_type = 404; // Desconocido
+                }
+            }
+
+            // Responder al cliente
+            unsafe {
+                core::arch::asm!(
+                    "ecall",
+                    in("a7") 4, // sys_ipc_send
+                    inout("a0") msg.sender as usize => _, // Dest: cliente
+                    in("a1") &msg as *const _ as usize,
+                    clobber_abi("C"),
+                );
+            }
         }
-    } else {
-        user_print("[Server] Error al recibir peticion.\n");
-    }
-    
-    user_print("[Server] Tarea finalizada, llamando a sys_exit...\n");
-    unsafe {
-        core::arch::asm!(
-            "ecall",
-            in("a7") 2 // sys_exit
-        );
     }
 }
 
