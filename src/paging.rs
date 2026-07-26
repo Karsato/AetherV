@@ -207,13 +207,13 @@ pub fn init() {
         &mut allocator,
     );
 
-    // 2. Mapeo VirtIO MMIO (0x1000_1000 - 0x1000_9000)
+    // 2. Mapeo VirtIO MMIO (0x1000_1000 - 0x1000_9000) - R-W-U para permitir drivers en U-mode
     map_range(
         unsafe { &mut KERNEL_PGTABLE },
         0x1000_1000,
         0x1000_1000,
         0x8000,
-        PTE_R | PTE_W,
+        PTE_R | PTE_W | PTE_U,
         &mut allocator,
     );
 
@@ -227,7 +227,7 @@ pub fn init() {
         &mut allocator,
     );
 
-    // 4. Mapeo Kernel .text - R-X
+    // 4. Mapeo Kernel .text para S-mode (sin PTE_U para evitar fallos de ejecución en S-mode)
     map_range(
         unsafe { &mut KERNEL_PGTABLE },
         stext_addr,
@@ -237,23 +237,64 @@ pub fn init() {
         &mut allocator,
     );
 
-    // 5. Mapeo Kernel .rodata - R
+    // 4b. Mapeos duplicados para U-mode (offset de -0x40000000)
+    // Mapear OpenSBI para U-mode
+    map_range(
+        unsafe { &mut KERNEL_PGTABLE },
+        0x40000000,
+        0x80000000,
+        0x200000,
+        PTE_R | PTE_X | PTE_U,
+        &mut allocator,
+    );
+
+    // Mapear .text para U-mode
+    map_range(
+        unsafe { &mut KERNEL_PGTABLE },
+        stext_addr - 0x40000000,
+        stext_addr,
+        etext_addr - stext_addr,
+        PTE_R | PTE_X | PTE_U,
+        &mut allocator,
+    );
+
+    // Mapear .rodata para U-mode
+    map_range(
+        unsafe { &mut KERNEL_PGTABLE },
+        srodata_addr - 0x40000000,
+        srodata_addr,
+        erodata_addr - srodata_addr,
+        PTE_R | PTE_U,
+        &mut allocator,
+    );
+
+    // Mapear .data/BSS/Heap y resto de la RAM fisica para U-mode
+    map_range(
+        unsafe { &mut KERNEL_PGTABLE },
+        sdata_addr - 0x40000000,
+        sdata_addr,
+        0x88000000 - sdata_addr,
+        PTE_R | PTE_W | PTE_U,
+        &mut allocator,
+    );
+
+    // 5. Mapeo Kernel .rodata - R-U
     map_range(
         unsafe { &mut KERNEL_PGTABLE },
         srodata_addr,
         srodata_addr,
         erodata_addr - srodata_addr,
-        PTE_R,
+        PTE_R | PTE_U,
         &mut allocator,
     );
 
-    // 6. Mapeo Kernel .data/BSS/Heap y resto de la RAM fisica (hasta 0x8800_0000) - R-W
+    // 6. Mapeo Kernel .data/BSS/Heap y resto de la RAM fisica (hasta 0x8800_0000) - R-W-U
     map_range(
         unsafe { &mut KERNEL_PGTABLE },
         sdata_addr,
         sdata_addr,
         0x88000000 - sdata_addr,
-        PTE_R | PTE_W,
+        PTE_R | PTE_W | PTE_U,
         &mut allocator,
     );
 
@@ -273,6 +314,8 @@ pub unsafe fn enable_paging(root_table_pa: usize) {
     let mode_sv39 = 8usize;
     // satp: [Mode: 63-60] [ASID: 59-44] [PPN: 43-0]
     let satp_val = (mode_sv39 << 60) | (root_table_pa >> 12);
+    // Habilitar SUM (bit 18) en sstatus para que el modo Supervisor pueda acceder a páginas PTE_U
+    core::arch::asm!("csrs sstatus, {}", in(reg) (1 << 18));
     core::arch::asm!(
         "csrw satp, {}",
         "sfence.vma",
