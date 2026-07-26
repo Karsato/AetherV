@@ -182,8 +182,8 @@ sequenceDiagram
   - [x] Migrar el código de `init()`, colas de Virtqueue, buffers de canal y renderizado local al driver en espacio de usuario (`gpu_driver_server` en [src/main.rs](file:///home/carlos/PARA/2-frecuente/00/AetherV/src/main.rs)).
   - [x] Implementar la función de traducción `to_physical` en [src/drivers/gpu.rs](file:///home/carlos/PARA/2-frecuente/00/AetherV/src/drivers/gpu.rs) para convertir punteros virtuales del espacio de usuario (`0x40xxxxxx`) a direcciones físicas reales (`0x80xxxxxx`) necesarias para las transferencias DMA del hardware.
   - [x] Validar de forma síncrona mediante llamadas IPC: la tarea `gpu_client` envía una petición para rellenar la pantalla de azul y posteriormente restaura el degradado cromático mediante mensajes síncronos enviados al servidor gráfico en U-Mode.
-- [ ] **Paso 4: Diseñar el Registro de Nombres del Sistema (Name Server)**
-  - [ ] Programar una estructura interna de búsqueda (`BTreeMap` o `Vec`) indexando nombres de servicios contra puertos IPC activos del kernel.
+- [x] **Paso 4: Diseñar el Registro de Nombres del Sistema (Name Server)** (Completado)
+  - [x] Programar una estructura interna de búsqueda (`BTreeMap` o `Vec`) indexando nombres de servicios contra puertos IPC activos del kernel.
 
 ---
 

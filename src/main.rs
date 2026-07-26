@@ -56,12 +56,14 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     sbi::print_str("[Kernel] Retorno de ebreak exitoso!\n");
 
     // Calcular dirección del entry point del usuario usando el mapeo virtual U-mode (offset -0x40000000)
-    let user_entry_va1 = (gpu_client as *const () as usize) - 0x40000000;
-    let user_entry_va2 = (gpu_driver_server as *const () as usize) - 0x40000000;
-    // Crear y registrar tareas secundarias (Tarea 1 y Tarea 2 en Modo Usuario)
-    task::create_user_task(1, user_entry_va1);
-    task::create_user_task(2, user_entry_va2);
-    sbi::print_str("[Kernel] Tareas de usuario 1 (Cliente) y 2 (Servidor) creadas.\n");
+    let user_entry_va1 = (gpu_driver_server as *const () as usize) - 0x40000000;
+    let user_entry_va2 = (gpu_client as *const () as usize) - 0x40000000;
+    let user_entry_va3 = (nameserver_task as *const () as usize) - 0x40000000;
+    // Crear y registrar tareas secundarias (Tareas en Modo Usuario)
+    task::create_user_task(1, user_entry_va1); // Tarea 1: Servidor GPU
+    task::create_user_task(2, user_entry_va2); // Tarea 2: Cliente
+    task::create_user_task(3, user_entry_va3); // Tarea 3: Nameserver
+    sbi::print_str("[Kernel] Tareas de usuario 1 (Servidor GPU), 2 (Cliente) y 3 (Nameserver) creadas.\n");
     sbi::print_str("[Kernel] Iniciando planificador multitarea...\n");
 
     let mut count = 0;
@@ -79,6 +81,12 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     }
 }
 
+// Códigos de comando del Nameserver
+pub const NS_CMD_REGISTER: u32 = 1001;
+pub const NS_CMD_LOOKUP:   u32 = 1002;
+pub const NS_RESP_SUCCESS: u32 = 2000;
+pub const NS_RESP_ERROR:   u32 = 4000;
+
 fn user_print(s: &str) {
     let ptr = s.as_ptr() as usize;
     let len = s.len();
@@ -93,8 +101,191 @@ fn user_print(s: &str) {
     }
 }
 
+fn user_ipc_send(dest: usize, msg: &crate::task::IpcMessage) -> isize {
+    let mut res: isize;
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") 4, // sys_ipc_send
+            inout("a0") dest as isize => res,
+            in("a1") msg as *const _ as usize,
+            clobber_abi("C"),
+        );
+    }
+    res
+}
+
+fn user_ipc_recv(src: usize, msg: &mut crate::task::IpcMessage) -> isize {
+    let mut res: isize;
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") 5, // sys_ipc_recv
+            inout("a0") src as isize => res,
+            in("a1") msg as *mut _ as usize,
+            clobber_abi("C"),
+        );
+    }
+    res
+}
+
+fn str_to_u8_16(s: &str) -> [u8; 16] {
+    let mut arr = [0u8; 16];
+    let bytes = s.as_bytes();
+    let len = core::cmp::min(bytes.len(), 16);
+    arr[0..len].copy_from_slice(&bytes[0..len]);
+    arr
+}
+
+#[derive(Copy, Clone, Debug)]
+struct ServiceEntry {
+    name: [u8; 16],
+    task_id: usize,
+}
+
+static mut SERVICES: [Option<ServiceEntry>; 8] = [None; 8];
+
+fn nameserver_task() {
+    user_print("[Nameserver] Inicializando servidor de nombres en U-Mode...\n");
+    loop {
+        let mut msg = crate::task::IpcMessage {
+            sender: 0,
+            msg_type: 0,
+            length: 0,
+            reserved: 0,
+            payload: [0; 32],
+        };
+        let res = user_ipc_recv(crate::task::IPC_WILDCARD, &mut msg);
+        if res == 0 {
+            user_print("[Nameserver] Solicitud recibida!\n");
+            match msg.msg_type {
+                NS_CMD_REGISTER => {
+                    let mut name = [0u8; 16];
+                    name.copy_from_slice(&msg.payload[0..16]);
+                    let task_id = msg.sender as usize;
+                    
+                    user_print("[Nameserver] Comando: Registrar servicio\n");
+                    
+                    let mut registered = false;
+                    unsafe {
+                        for entry in SERVICES.iter_mut() {
+                            if let Some(e) = entry {
+                                if e.name == name {
+                                    e.task_id = task_id;
+                                    registered = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if !registered {
+                            for entry in SERVICES.iter_mut() {
+                                if entry.is_none() {
+                                    *entry = Some(ServiceEntry { name, task_id });
+                                    registered = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    let reply = crate::task::IpcMessage {
+                        sender: 3,
+                        msg_type: if registered { NS_RESP_SUCCESS } else { NS_RESP_ERROR },
+                        length: 0,
+                        reserved: 0,
+                        payload: [0; 32],
+                    };
+                    user_ipc_send(task_id, &reply);
+                }
+                NS_CMD_LOOKUP => {
+                    let mut name = [0u8; 16];
+                    name.copy_from_slice(&msg.payload[0..16]);
+                    
+                    user_print("[Nameserver] Comando: Resolver servicio\n");
+                    
+                    let mut found_id = None;
+                    unsafe {
+                        for entry in SERVICES.iter() {
+                            if let Some(e) = entry {
+                                if e.name == name {
+                                    found_id = Some(e.task_id);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    let mut reply = crate::task::IpcMessage {
+                        sender: 3,
+                        msg_type: if found_id.is_some() { NS_RESP_SUCCESS } else { NS_RESP_ERROR },
+                        length: 4,
+                        reserved: 0,
+                        payload: [0; 32],
+                    };
+                    if let Some(tid) = found_id {
+                        let bytes = (tid as u32).to_ne_bytes();
+                        reply.payload[16..20].copy_from_slice(&bytes);
+                    }
+                    user_ipc_send(msg.sender as usize, &reply);
+                }
+                _ => {
+                    user_print("[Nameserver] Comando desconocido\n");
+                    let reply = crate::task::IpcMessage {
+                        sender: 3,
+                        msg_type: NS_RESP_ERROR,
+                        length: 0,
+                        reserved: 0,
+                        payload: [0; 32],
+                    };
+                    user_ipc_send(msg.sender as usize, &reply);
+                }
+            }
+        }
+    }
+}
+
 fn gpu_client() {
-    user_print("[GPU Client] Iniciado. Solicitando al Servidor GPU rellenar la pantalla de azul...\n");
+    // Buscar el servicio "display" en el Nameserver (Tarea 3)
+    user_print("[GPU Client] Buscando el servicio 'display' en el Nameserver (Tarea 3)...\n");
+    let mut lookup_msg = crate::task::IpcMessage {
+        sender: 0,
+        msg_type: NS_CMD_LOOKUP,
+        length: 16,
+        reserved: 0,
+        payload: [0; 32],
+    };
+    lookup_msg.payload[0..16].copy_from_slice(&str_to_u8_16("display"));
+
+    let mut gpu_task_id = 0;
+    let mut res = user_ipc_send(3, &lookup_msg);
+    if res == 0 {
+        let mut reply = crate::task::IpcMessage {
+            sender: 0,
+            msg_type: 0,
+            length: 0,
+            reserved: 0,
+            payload: [0; 32],
+        };
+        res = user_ipc_recv(3, &mut reply);
+        if res == 0 && reply.msg_type == NS_RESP_SUCCESS {
+            let mut bytes = [0u8; 4];
+            bytes.copy_from_slice(&reply.payload[16..20]);
+            gpu_task_id = u32::from_ne_bytes(bytes) as usize;
+            user_print("[GPU Client] Servicio 'display' resuelto con éxito.\n");
+        } else {
+            user_print("[GPU Client] Error al resolver el servicio 'display'.\n");
+            unsafe {
+                core::arch::asm!("ecall", in("a7") 2, clobber_abi("C"));
+            }
+        }
+    } else {
+        user_print("[GPU Client] Error al conectar con el Nameserver.\n");
+        unsafe {
+            core::arch::asm!("ecall", in("a7") 2, clobber_abi("C"));
+        }
+    }
+
+    user_print("[GPU Client] Solicitando al Servidor GPU rellenar la pantalla de azul...\n");
 
     let mut msg = crate::task::IpcMessage {
         sender: 0,
@@ -108,16 +299,7 @@ fn gpu_client() {
     msg.payload[1] = 0;   // G
     msg.payload[2] = 255; // B
 
-    let mut res: isize;
-    unsafe {
-        core::arch::asm!(
-            "ecall",
-            in("a7") 4, // sys_ipc_send
-            inout("a0") 2_isize => res, // Dest: Tarea 2 (GPU Server)
-            in("a1") &msg as *const _ as usize,
-            clobber_abi("C"),
-        );
-    }
+    res = user_ipc_send(gpu_task_id, &msg);
 
     if res == 0 {
         user_print("[GPU Client] Petición enviada. Esperando confirmación...\n");
@@ -129,15 +311,7 @@ fn gpu_client() {
             reserved: 0,
             payload: [0; 32],
         };
-        unsafe {
-            core::arch::asm!(
-                "ecall",
-                in("a7") 5, // sys_ipc_recv
-                inout("a0") 2_isize => res, // Src: Tarea 2
-                in("a1") &reply as *const _ as usize,
-                clobber_abi("C"),
-            );
-        }
+        res = user_ipc_recv(gpu_task_id, &mut reply);
         if res == 0 && reply.msg_type == 200 {
             user_print("[GPU Client] Pantalla azul pintada con éxito!\n");
         } else {
@@ -155,15 +329,7 @@ fn gpu_client() {
     user_print("[GPU Client] Solicitando al Servidor GPU restaurar el patrón degradado cromático...\n");
     msg.msg_type = 1; // Comando de degradado cromático
 
-    unsafe {
-        core::arch::asm!(
-            "ecall",
-            in("a7") 4, // sys_ipc_send
-            inout("a0") 2_isize => res, // Dest: Tarea 2 (GPU Server)
-            in("a1") &msg as *const _ as usize,
-            clobber_abi("C"),
-        );
-    }
+    res = user_ipc_send(gpu_task_id, &msg);
 
     if res == 0 {
         user_print("[GPU Client] Petición enviada. Esperando confirmación...\n");
@@ -175,15 +341,7 @@ fn gpu_client() {
             reserved: 0,
             payload: [0; 32],
         };
-        unsafe {
-            core::arch::asm!(
-                "ecall",
-                in("a7") 5, // sys_ipc_recv
-                inout("a0") 2_isize => res, // Src: Tarea 2
-                in("a1") &reply2 as *const _ as usize,
-                clobber_abi("C"),
-            );
-        }
+        res = user_ipc_recv(gpu_task_id, &mut reply2);
         if res == 0 && reply2.msg_type == 200 {
             user_print("[GPU Client] Patrón degradado cromático restaurado con éxito!\n");
         }
@@ -202,7 +360,39 @@ fn gpu_client() {
 fn gpu_driver_server() {
     user_print("[GPU Server] Iniciando inicialización en U-Mode...\n");
     drivers::gpu::init();
-    user_print("[GPU Server] Inicialización completada con éxito. Entrando en bucle de servicio IPC...\n");
+    user_print("[GPU Server] Inicialización completada con éxito.\n");
+
+    // Registrar el servicio "display" en el Nameserver (Tarea 3)
+    user_print("[GPU Server] Registrando servicio 'display' en el Nameserver (Tarea 3)...\n");
+    let mut reg_msg = crate::task::IpcMessage {
+        sender: 0,
+        msg_type: NS_CMD_REGISTER,
+        length: 16,
+        reserved: 0,
+        payload: [0; 32],
+    };
+    reg_msg.payload[0..16].copy_from_slice(&str_to_u8_16("display"));
+    
+    let mut res = user_ipc_send(3, &reg_msg);
+    if res == 0 {
+        let mut reply = crate::task::IpcMessage {
+            sender: 0,
+            msg_type: 0,
+            length: 0,
+            reserved: 0,
+            payload: [0; 32],
+        };
+        res = user_ipc_recv(3, &mut reply);
+        if res == 0 && reply.msg_type == NS_RESP_SUCCESS {
+            user_print("[GPU Server] Registro exitoso en el Nameserver!\n");
+        } else {
+            user_print("[GPU Server] Error en el registro en el Nameserver.\n");
+        }
+    } else {
+        user_print("[GPU Server] Error al conectar con el Nameserver.\n");
+    }
+
+    user_print("[GPU Server] Entrando en bucle de servicio IPC...\n");
 
     loop {
         #[allow(unused_mut)]
