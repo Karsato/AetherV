@@ -5,6 +5,7 @@ mod entry;
 mod sbi;
 mod trap;
 mod paging;
+mod task;
 
 use core::panic::PanicInfo;
 
@@ -39,22 +40,63 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     trap::enable_timer_interrupt();
     sbi::print_str("[Kernel] Interrupciones de reloj activadas.\n");
 
-    // Prueba 1: realizar una llamada al sistema ficticia (ecall) para verificar
-    sbi::print_str("[Kernel] Probando ecall ficticio en Supervisor Mode...\n");
-    unsafe {
-        core::arch::asm!("ecall");
-    }
-    sbi::print_str("[Kernel] Retorno de ecall exitoso!\n");
-
-    // Prueba 2: realizar un ebreak (breakpoint) en S-mode para verificar
+    // Prueba 1: realizar un ebreak (breakpoint) en S-mode para verificar
     sbi::print_str("[Kernel] Probando ebreak (breakpoint) en S-mode...\n");
     unsafe {
         core::arch::asm!("ebreak");
     }
     sbi::print_str("[Kernel] Retorno de ebreak exitoso!\n");
 
+    // Crear y registrar tareas secundarias
+    task::create_task(1, task1);
+    task::create_task(2, task2);
+    sbi::print_str("[Kernel] Tareas concurrentes 1 y 2 creadas.\n");
+    sbi::print_str("[Kernel] Iniciando planificador multitarea...\n");
+
+    let mut count = 0;
     loop {
-        unsafe { core::arch::asm!("wfi"); }
+        sbi::print_str("M");
+        count += 1;
+        if count == 100 {
+            sbi::print_str("\n[Main Thread] Cediendo CPU de forma cooperativa...\n");
+            task::yield_cpu();
+            count = 0;
+        }
+        for _ in 0..200000 {
+            unsafe { core::arch::asm!("nop"); }
+        }
+    }
+}
+
+fn task1() {
+    let mut count = 0;
+    loop {
+        sbi::print_str("A");
+        count += 1;
+        if count == 80 {
+            sbi::print_str("\n[Task 1] Cediendo CPU de forma cooperativa...\n");
+            task::yield_cpu();
+            count = 0;
+        }
+        for _ in 0..200000 {
+            unsafe { core::arch::asm!("nop"); }
+        }
+    }
+}
+
+fn task2() {
+    let mut count = 0;
+    loop {
+        sbi::print_str("B");
+        count += 1;
+        if count == 120 {
+            sbi::print_str("\n[Task 2] Cediendo CPU de forma cooperativa...\n");
+            task::yield_cpu();
+            count = 0;
+        }
+        for _ in 0..200000 {
+            unsafe { core::arch::asm!("nop"); }
+        }
     }
 }
 

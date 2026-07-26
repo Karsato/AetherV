@@ -1,3 +1,4 @@
+#![allow(static_mut_refs)]
 // Manejo de excepciones e interrupciones en Supervisor Mode
 use crate::sbi;
 
@@ -50,8 +51,22 @@ pub extern "C" fn rust_trap_handler(tf: &mut TrapFrame) {
                 tf.sepc += len;
             }
             9 => { // Environment Call desde S-mode
-                sbi::print_str("\n[Syscall] ecall desde S-mode capturado con éxito.\n");
-                tf.sepc += 4; // Continuar tras la instrucción ecall
+                let syscall_id = tf.regs[17]; // a7 es x17
+                match syscall_id {
+                    1 => { // sys_yield
+                        tf.sepc += 4;
+                        crate::task::yield_cpu();
+                    }
+                    2 => { // sys_exit
+                        unsafe {
+                            crate::task::SCHEDULER.exit_current_task();
+                        }
+                    }
+                    _ => {
+                        sbi::print_str("\n[Syscall] ecall desde S-mode capturado con éxito.\n");
+                        tf.sepc += 4; // Continuar tras la instrucción ecall
+                    }
+                }
             }
             2 => {
                 sbi::print_str("\n[Exception] Instrucción ilegal detectada!\n");
@@ -91,6 +106,10 @@ fn handle_timer_interrupt() {
     sbi::print_str(".");
     // Programar la siguiente interrupción de temporizador
     sbi::sbi_set_timer(sbi::get_time() + TIMER_INTERVAL);
+    // Cambiar preventivamente de tarea (Preemptive context switch)
+    unsafe {
+        crate::task::SCHEDULER.schedule();
+    }
 }
 
 pub fn init() {
