@@ -8,7 +8,7 @@ date_created: 2026-07-26
 last_modified: 2026-07-26
 tags:
   - knowledge/source
-  - status/inbox
+  - status/active
   - topic/os-development
   - topic/riscv
   - topic/ipc
@@ -170,13 +170,14 @@ sequenceDiagram
 
 ## 🛠️ Acciones / Plan de Implementación de la Fase 4
 
-- [ ] **Paso 1: Implementar Soporte y Cambio de Contexto para U-Mode**
-  - [ ] Extender el PCB de tareas (`src/task.rs`) para incluir un campo de privilegio previo e inicializar de forma segura el registro `sstatus` con `SPP = 0`.
-  - [ ] Implementar la manipulación de `sscratch` en el salvado/restaurado de registros dentro de `src/trap.S` para cambiar entre la pila del kernel y la del usuario.
-- [ ] **Paso 2: Desarrollar el Subsistema de Mensajería IPC**
-  - [ ] Crear el despachador de llamadas del sistema de IPC (`sys_ipc_send`, `sys_ipc_recv` y `sys_ipc_reply_recv`).
-  - [ ] Desarrollar la lógica de bloqueo/desbloqueo de tareas y colas de espera en el planificador cooperativo/preemptivo.
-  - [ ] Escribir test unitario de paso de mensajes síncrono entre dos tareas del kernel simulando espacio de usuario.
+- [x] **Paso 1: Implementar Soporte y Cambio de Contexto para U-Mode** (Completado)
+  - [x] Extender el PCB de tareas (`src/task.rs`) para incluir campos IPC de canal y guardar de forma segura `tf_addr` durante interrupciones. Habilitar `SUM` (Supervisor User Memory access).
+  - [x] Implementar la manipulación de `sscratch` en el salvado/restaurado de registros dentro de `src/trap.S` para alternar entre la pila del kernel y del usuario.
+  - [x] Configurar mapeo duplicado simétrico con desplazamiento `-0x40000000` en Sv39 para permitir direccionamiento PC-relative transparente y acceso de U-mode a constantes en `.rodata` y datos en `.data`/BSS/heap.
+- [x] **Paso 2: Desarrollar el Subsistema de Mensajería IPC** (Completado)
+  - [x] Crear el despachador de llamadas del sistema de IPC (`sys_ipc_send`, `sys_ipc_recv`, `sys_ipc_reply_recv` y `sys_ipc_notify`).
+  - [x] Desarrollar la lógica de bloqueo/desbloqueo de tareas (`BlockedSend`, `BlockedRecv`) en el planificador Round-Robin del kernel.
+  - [x] Escribir y validar de forma exitosa en simulación de QEMU el flujo de comunicación síncrona cliente-servidor (Rendezvous con envío de `DEADBEEF` y recepción de respuesta `CAFE` entre tareas de U-Mode).
 - [ ] **Paso 3: Extraer el Controlador VirtIO GPU a U-Mode**
   - [ ] Mapear la página física de la GPU con el bit `PTE_U` en el proceso del driver gráfico.
   - [ ] Migrar el código de `init()` y transferencia de buffers al ejecutable del driver de espacio de usuario.
