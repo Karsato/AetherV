@@ -207,12 +207,12 @@ pub fn init() {
         &mut allocator,
     );
 
-    // 2. Mapeo VirtIO MMIO (0x1000_1000 - 0x1000_5000)
+    // 2. Mapeo VirtIO MMIO (0x1000_1000 - 0x1000_9000)
     map_range(
         unsafe { &mut KERNEL_PGTABLE },
         0x1000_1000,
         0x1000_1000,
-        0x4000,
+        0x8000,
         PTE_R | PTE_W,
         &mut allocator,
     );

@@ -7,6 +7,7 @@ mod trap;
 mod paging;
 mod task;
 mod fdt;
+mod drivers;
 
 use core::panic::PanicInfo;
 
@@ -41,6 +42,9 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
 
     // Inicializar memoria virtual (Paginación Sv39)
     paging::init();
+
+    // Inicializar controlador gráfico VirtIO GPU
+    drivers::gpu::init();
 
     // Activar interrupción del temporizador
     trap::enable_timer_interrupt();
