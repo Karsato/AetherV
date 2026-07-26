@@ -134,10 +134,10 @@ Los comandos se envían en formato de paquetes binarios a la GPU:
 ```rust
 // Comandos del protocolo de control GPU
 pub const VIRTIO_GPU_CMD_RESOURCE_CREATE_2D: u32 = 0x0101;
-pub const VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING: u32 = 0x0102;
+pub const VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING: u32 = 0x0106;
 pub const VIRTIO_GPU_CMD_SET_SCANOUT: u32 = 0x0103;
 pub const VIRTIO_GPU_CMD_TRANSFER_TO_HOST_2D: u32 = 0x0105;
-pub const VIRTIO_GPU_CMD_RESOURCE_FLUSH: u32 = 0x0106;
+pub const VIRTIO_GPU_CMD_RESOURCE_FLUSH: u32 = 0x0104;
 
 // Cabecera común de comandos GPU
 #[repr(C)]
