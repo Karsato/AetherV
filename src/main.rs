@@ -4,6 +4,7 @@
 mod entry;
 mod sbi;
 mod trap;
+mod paging;
 
 use core::panic::PanicInfo;
 
@@ -30,6 +31,9 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     // Inicializar el sistema de trampas (Trap Handler)
     trap::init();
     sbi::print_str("[Kernel] Sistema de trampas inicializado.\n");
+
+    // Inicializar memoria virtual (Paginación Sv39)
+    paging::init();
 
     // Activar interrupción del temporizador
     trap::enable_timer_interrupt();
