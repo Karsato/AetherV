@@ -6,6 +6,7 @@ mod sbi;
 mod trap;
 mod paging;
 mod task;
+mod fdt;
 
 use core::panic::PanicInfo;
 
@@ -29,6 +30,11 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     sbi::print_str("  MicroRust Kernel Initialized (RISC-V) \n");
     sbi::print_str("========================================\n");
     
+    // Analizar el Device Tree (FDT) proporcionado por OpenSBI en _fdt_ptr (a1)
+    unsafe {
+        fdt::parse_fdt(_fdt_ptr);
+    }
+
     // Inicializar el sistema de trampas (Trap Handler)
     trap::init();
     sbi::print_str("[Kernel] Sistema de trampas inicializado.\n");
