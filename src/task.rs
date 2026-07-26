@@ -34,6 +34,7 @@ impl TaskContext {
 pub struct Task {
     pub id: usize,
     pub kstack: [u8; 4096], // Pila del núcleo de 4KB
+    pub ustack: [u8; 4096], // Pila de usuario de 4KB
     pub context: TaskContext,
     pub status: TaskStatus,
 }
@@ -43,6 +44,7 @@ impl Task {
         Self {
             id,
             kstack: [0; 4096],
+            ustack: [0; 4096],
             context: TaskContext::zero(),
             status: TaskStatus::Unused,
         }
@@ -165,5 +167,49 @@ pub fn create_task(id: usize, entry: fn()) {
 pub fn yield_cpu() {
     unsafe {
         SCHEDULER.schedule();
+    }
+}
+
+pub fn create_user_task(id: usize, entry: usize) {
+    unsafe {
+        let scheduler = &mut SCHEDULER;
+        if id >= MAX_TASKS {
+            panic!("ID de tarea inválido.");
+        }
+        let task = &mut scheduler.tasks[id];
+        task.status = TaskStatus::Ready;
+
+        // Limpiar el TrapFrame inicial al tope de la pila del kernel de la tarea
+        let kstack_top = &task.kstack as *const [u8; 4096] as usize + 4096;
+        let tf_ptr = (kstack_top - core::mem::size_of::<crate::trap::TrapFrame>()) as *mut crate::trap::TrapFrame;
+        
+        // Escribir TrapFrame vacío
+        core::ptr::write_volatile(tf_ptr, crate::trap::TrapFrame {
+            regs: [0; 32],
+            sstatus: 0,
+            sepc: entry,
+        });
+
+        let tf = &mut *tf_ptr;
+        // Configurar pila de usuario (sp = regs[2])
+        let ustack_top = &task.ustack as *const [u8; 4096] as usize + 4096;
+        tf.regs[2] = ustack_top;
+
+        // Configurar sstatus para volver a U-mode con interrupciones y SUM habilitados
+        let mut sstatus: usize;
+        core::arch::asm!("csrr {}, sstatus", out(reg) sstatus);
+        sstatus &= !(1 << 8); // SPP = 0 (retorno a U-mode)
+        sstatus |= 1 << 5;  // SPIE = 1 (habilitar interrupciones en U-mode)
+        sstatus |= 1 << 18; // SUM = 1 (acceso de Supervisor a memoria de Usuario)
+        tf.sstatus = sstatus;
+
+        // El TaskContext de la tarea guardará:
+        // ra: trap_return (para que al alternar ejecute el retorno de trampa)
+        // sp: tf_ptr (puntero al TrapFrame que acabamos de crear en su pila del kernel)
+        extern "C" {
+            fn trap_return();
+        }
+        task.context.ra = trap_return as *const () as usize;
+        task.context.sp = tf_ptr as usize;
     }
 }

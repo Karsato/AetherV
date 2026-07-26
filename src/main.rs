@@ -57,10 +57,12 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     }
     sbi::print_str("[Kernel] Retorno de ebreak exitoso!\n");
 
-    // Crear y registrar tareas secundarias
-    task::create_task(1, task1);
+    // Calcular dirección del entry point del usuario usando el mapeo virtual U-mode (offset -0x40000000)
+    let user_entry_va = (user_task as *const () as usize) - 0x40000000;
+    // Crear y registrar tareas secundarias (Tarea 1 en Modo Usuario, Tarea 2 en Modo Supervisor)
+    task::create_user_task(1, user_entry_va);
     task::create_task(2, task2);
-    sbi::print_str("[Kernel] Tareas concurrentes 1 y 2 creadas.\n");
+    sbi::print_str("[Kernel] Tareas concurrentes 1 (User) y 2 (Kernel) creadas.\n");
     sbi::print_str("[Kernel] Iniciando planificador multitarea...\n");
 
     let mut count = 0;
@@ -78,15 +80,43 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     }
 }
 
-fn task1() {
+fn user_print(s: &str) {
+    let ptr = s.as_ptr() as usize;
+    let len = s.len();
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") 3,
+            in("a0") ptr,
+            in("a1") len,
+            lateout("a0") _
+        );
+    }
+}
+
+fn user_task() {
     let mut count = 0;
     loop {
-        sbi::print_str("A");
+        user_print("[U-Mode] Hola desde la tarea de espacio de usuario!\n");
+
+        // Llamada al sistema sys_yield (syscall_id = 1)
+        unsafe {
+            core::arch::asm!(
+                "ecall",
+                in("a7") 1
+            );
+        }
+
         count += 1;
-        if count == 80 {
-            sbi::print_str("\n[Task 1] Cediendo CPU de forma cooperativa...\n");
-            task::yield_cpu();
-            count = 0;
+        if count == 5 {
+            user_print("[U-Mode] Tarea finalizada, llamando a sys_exit...\n");
+            // Llamada al sistema sys_exit (syscall_id = 2)
+            unsafe {
+                core::arch::asm!(
+                    "ecall",
+                    in("a7") 2
+                );
+            }
         }
         for _ in 0..200000 {
             unsafe { core::arch::asm!("nop"); }

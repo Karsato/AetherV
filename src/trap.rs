@@ -50,6 +50,37 @@ pub extern "C" fn rust_trap_handler(tf: &mut TrapFrame) {
                 let len = if (inst & 0x3) == 0x3 { 4 } else { 2 };
                 tf.sepc += len;
             }
+            8 => { // Environment Call desde U-mode
+                let syscall_id = tf.regs[17]; // a7 es x17
+                match syscall_id {
+                    1 => { // sys_yield
+                        tf.sepc += 4;
+                        crate::task::yield_cpu();
+                    }
+                    2 => { // sys_exit
+                        tf.sepc += 4;
+                        unsafe {
+                            crate::task::SCHEDULER.exit_current_task();
+                        }
+                    }
+                    3 => { // sys_write (para imprimir desde U-mode)
+                        let ptr = tf.regs[10] as *const u8; // a0
+                        let len = tf.regs[11]; // a1
+                        let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
+                        if let Ok(s) = core::str::from_utf8(slice) {
+                            sbi::print_str(s);
+                        }
+                        tf.regs[10] = 0; // Retornar 0 (éxito) en a0
+                        tf.sepc += 4;
+                    }
+                    _ => {
+                        sbi::print_str("\n[Syscall] ecall desde U-mode no implementado: ");
+                        sbi::print_hex(syscall_id);
+                        sbi::print_str("\n");
+                        tf.sepc += 4;
+                    }
+                }
+            }
             9 => { // Environment Call desde S-mode
                 let syscall_id = tf.regs[17]; // a7 es x17
                 match syscall_id {
@@ -117,6 +148,8 @@ pub fn init() {
         fn trap_entry();
     }
     unsafe {
+        // Inicializar sscratch a 0 para el modo S-mode
+        core::arch::asm!("csrw sscratch, zero");
         // Modo Directo: stvec = trap_entry (los bits de modo son 00)
         let trap_entry_addr = trap_entry as *const () as usize;
         core::arch::asm!("csrw stvec, {}", in(reg) trap_entry_addr);
@@ -127,8 +160,8 @@ pub fn enable_timer_interrupt() {
     unsafe {
         // Habilitar Timer Interrupts en sie (Supervisor Interrupt Enable, bit 5 es STIE)
         core::arch::asm!("csrs sie, {}", in(reg) (1 << 5));
-        // Habilitar interrupciones globales en sstatus (bit 1 es SIE)
-        core::arch::asm!("csrs sstatus, {}", in(reg) (1 << 1));
+        // Habilitar interrupciones globales en sstatus (bit 1 es SIE) y habilitar SUM (bit 18)
+        core::arch::asm!("csrs sstatus, {}", in(reg) ((1 << 1) | (1 << 18)));
     }
     // Programar el primer tick del temporizador
     sbi::sbi_set_timer(sbi::get_time() + TIMER_INTERVAL);
