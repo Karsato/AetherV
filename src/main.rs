@@ -3,6 +3,7 @@
 
 mod entry;
 mod sbi;
+mod trap;
 
 use core::panic::PanicInfo;
 
@@ -26,7 +27,27 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     sbi::print_str("  MicroRust Kernel Initialized (RISC-V) \n");
     sbi::print_str("========================================\n");
     
-    // Future expansion: Initialize VirtIO Display & Input Drivers here
+    // Inicializar el sistema de trampas (Trap Handler)
+    trap::init();
+    sbi::print_str("[Kernel] Sistema de trampas inicializado.\n");
+
+    // Activar interrupción del temporizador
+    trap::enable_timer_interrupt();
+    sbi::print_str("[Kernel] Interrupciones de reloj activadas.\n");
+
+    // Prueba 1: realizar una llamada al sistema ficticia (ecall) para verificar
+    sbi::print_str("[Kernel] Probando ecall ficticio en Supervisor Mode...\n");
+    unsafe {
+        core::arch::asm!("ecall");
+    }
+    sbi::print_str("[Kernel] Retorno de ecall exitoso!\n");
+
+    // Prueba 2: realizar un ebreak (breakpoint) en S-mode para verificar
+    sbi::print_str("[Kernel] Probando ebreak (breakpoint) en S-mode...\n");
+    unsafe {
+        core::arch::asm!("ebreak");
+    }
+    sbi::print_str("[Kernel] Retorno de ebreak exitoso!\n");
 
     loop {
         unsafe { core::arch::asm!("wfi"); }
@@ -36,10 +57,15 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     sbi::print_str("\n[KERNEL PANIC]: ");
-    if let Some(_location) = info.location() {
-        // Simple panic notification
+    if let Some(location) = info.location() {
+        sbi::print_str("Execution halted at ");
+        sbi::print_str(location.file());
+        sbi::print_str(":");
+        sbi::print_hex(location.line() as usize);
+    } else {
         sbi::print_str("Execution halted.");
     }
+    sbi::print_str("\n");
     loop {
         unsafe { core::arch::asm!("wfi"); }
     }

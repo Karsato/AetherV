@@ -147,7 +147,3 @@ git checkout -b feature/01-trap-handler
 
 ---
 
-<ElicitationsGroup message="¿Qué rama te gustaría crear e implementar en el repositorio primero?">
-  <Elicitation label="Desarrollar la rama 'feature/01-trap-handler' (Interrupciones y Temporizador)" query="Muestra el código en Rust y Ensamblador para la rama feature/01-trap-handler (stvec, guardar registros y captura de interrupciones)."/>
-  <Elicitation label="Desarrollar la rama 'feature/04-devicetree-parser' (Lectura de Hardware)" query="Proporciona el código para la rama feature/04-devicetree-parser para inspeccionar la FDT que pasa OpenSBI en el registro a1."/>
-</ElicitationsGroup>
