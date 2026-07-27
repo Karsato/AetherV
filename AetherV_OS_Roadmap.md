@@ -113,7 +113,9 @@ Para mantener la estabilidad durante las iteraciones de desarrollo, se adopta el
 - **Tareas Clave:**
   1. Implementar comunicación entre procesos (IPC) síncrona y asíncrona de alta velocidad.
   2. Mudar los controladores de VirtIO desde el espacio de kernel hacia procesos en espacio de usuario regulados con tokens de capacidad.
-  3. Establecer un registro central de servicios del sistema (File Manager, Network Service, Display Server).
+  3. Establecer un registro central de servicios del sistema (Nameserver / Service Registry).
+  4. **Fase 4.5 (Completado):** Migración del driver de teclado VirtIO Input a espacio de usuario (U-Mode) con delegación de interrupciones del PLIC (IRQ 7) mediante notificaciones asíncronas de IPC.
+  5. **Optimización de Bajo Consumo (Completado):** Implementación de suspensión/espera eficiente con la instrucción `wfi` (Wait For Interrupt) en la Tarea Idle y en el planificador para reducir a 0% el uso de CPU host cuando el sistema está inactivo.
 
 ---
 
@@ -146,4 +148,3 @@ git checkout -b feature/01-trap-handler
 - [[src/entry.rs]]
 
 ---
-

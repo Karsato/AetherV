@@ -48,6 +48,13 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     trap::enable_timer_interrupt();
     sbi::print_str("[Kernel] Interrupciones de reloj activadas.\n");
 
+    // Inicializar PLIC y habilitar interrupción externa para VirtIO Input (IRQ 6 y 7)
+    trap::plic_init();
+    trap::plic_enable_irq(6); // Mouse
+    trap::plic_enable_irq(7); // Keyboard
+    trap::enable_external_interrupt();
+    sbi::print_str("[Kernel] Interrupciones de PLIC para VirtIO Input (IRQ 6 y 7) activadas.\n");
+
     // Prueba 1: realizar un ebreak (breakpoint) en S-mode para verificar
     sbi::print_str("[Kernel] Probando ebreak (breakpoint) en S-mode...\n");
     unsafe {
@@ -59,14 +66,19 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     let user_entry_va1 = (gpu_driver_server as *const () as usize) - 0x40000000;
     let user_entry_va2 = (gpu_client as *const () as usize) - 0x40000000;
     let user_entry_va3 = (nameserver_task as *const () as usize) - 0x40000000;
+    let user_entry_va4 = (input_driver_server as *const () as usize) - 0x40000000;
+    let user_entry_va5 = (input_client as *const () as usize) - 0x40000000;
     // Crear y registrar tareas secundarias (Tareas en Modo Usuario)
     task::create_user_task(1, user_entry_va1); // Tarea 1: Servidor GPU
     task::create_user_task(2, user_entry_va2); // Tarea 2: Cliente
     task::create_user_task(3, user_entry_va3); // Tarea 3: Nameserver
-    sbi::print_str("[Kernel] Tareas de usuario 1 (Servidor GPU), 2 (Cliente) y 3 (Nameserver) creadas.\n");
+    task::create_user_task(4, user_entry_va4); // Tarea 4: Servidor Input
+    task::create_user_task(5, user_entry_va5); // Tarea 5: Cliente Input
+    sbi::print_str("[Kernel] Tareas de usuario 1 a 5 creadas.\n");
     sbi::print_str("[Kernel] Iniciando planificador multitarea...\n");
 
     let mut count = 0;
+    let mut loops = 0;
     loop {
         sbi::print_str("M");
         count += 1;
@@ -74,10 +86,23 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
             sbi::print_str("\n[Main Thread] Cediendo CPU de forma cooperativa...\n");
             task::yield_cpu();
             count = 0;
+            loops += 1;
+            if loops == 3 {
+                sbi::print_str("\n[Main Thread] Entrando en estado de reposo de bajo consumo (WFI)...\n");
+                break;
+            }
         }
         for _ in 0..200000 {
             unsafe { core::arch::asm!("nop"); }
         }
+    }
+
+    // Bucle de reposo de bajo consumo en S-Mode
+    loop {
+        unsafe {
+            core::arch::asm!("wfi");
+        }
+        task::yield_cpu();
     }
 }
 
@@ -86,6 +111,11 @@ pub const NS_CMD_REGISTER: u32 = 1001;
 pub const NS_CMD_LOOKUP:   u32 = 1002;
 pub const NS_RESP_SUCCESS: u32 = 2000;
 pub const NS_RESP_ERROR:   u32 = 4000;
+
+// Códigos de comando del Driver de Teclado
+pub const INPUT_CMD_GET_KEY: u32 = 2001;
+pub const INPUT_RESP_KEY:     u32 = 2002;
+pub const INPUT_RESP_EMPTY:   u32 = 2003;
 
 fn user_print(s: &str) {
     let ptr = s.as_ptr() as usize;
@@ -454,6 +484,268 @@ fn gpu_driver_server() {
                     clobber_abi("C"),
                 );
             }
+        }
+    }
+}
+
+static mut KEY_BUFFER: [char; 64] = ['\0'; 64];
+static mut KEY_HEAD: usize = 0;
+static mut KEY_TAIL: usize = 0;
+
+fn push_key(c: char) {
+    unsafe {
+        let next = (KEY_HEAD + 1) % 64;
+        if next != KEY_TAIL {
+            KEY_BUFFER[KEY_HEAD] = c;
+            KEY_HEAD = next;
+        }
+    }
+}
+
+fn pop_key() -> Option<char> {
+    unsafe {
+        if KEY_TAIL == KEY_HEAD {
+            None
+        } else {
+            let c = KEY_BUFFER[KEY_TAIL];
+            KEY_TAIL = (KEY_TAIL + 1) % 64;
+            Some(c)
+        }
+    }
+}
+
+fn keycode_to_char(code: u16) -> Option<char> {
+    match code {
+        2 => Some('1'),
+        3 => Some('2'),
+        4 => Some('3'),
+        5 => Some('4'),
+        6 => Some('5'),
+        7 => Some('6'),
+        8 => Some('7'),
+        9 => Some('8'),
+        10 => Some('9'),
+        11 => Some('0'),
+        12 => Some('-'),
+        13 => Some('='),
+        14 => Some('\x08'), // Backspace
+        15 => Some('\t'),
+        16 => Some('q'),
+        17 => Some('w'),
+        18 => Some('e'),
+        19 => Some('r'),
+        20 => Some('t'),
+        21 => Some('y'),
+        22 => Some('u'),
+        23 => Some('i'),
+        24 => Some('o'),
+        25 => Some('p'),
+        26 => Some('['),
+        27 => Some(']'),
+        28 => Some('\n'), // Enter
+        30 => Some('a'),
+        31 => Some('s'),
+        32 => Some('d'),
+        33 => Some('f'),
+        34 => Some('g'),
+        35 => Some('h'),
+        36 => Some('j'),
+        37 => Some('k'),
+        38 => Some('l'),
+        39 => Some(';'),
+        40 => Some('\''),
+        41 => Some('`'),
+        44 => Some('z'),
+        45 => Some('x'),
+        46 => Some('c'),
+        47 => Some('v'),
+        48 => Some('b'),
+        49 => Some('n'),
+        50 => Some('m'),
+        51 => Some(','),
+        52 => Some('.'),
+        53 => Some('/'),
+        57 => Some(' '), // Space
+        _ => None,
+    }
+}
+
+fn input_driver_server() {
+    user_print("[Input Server] Iniciando inicialización en U-Mode...\n");
+    drivers::input::init();
+    user_print("[Input Server] Inicialización completada con éxito.\n");
+
+    // Registrar el servicio "input" en el Nameserver (Tarea 3)
+    user_print("[Input Server] Registrando servicio 'input' en el Nameserver (Tarea 3)...\n");
+    let mut reg_msg = crate::task::IpcMessage {
+        sender: 0,
+        msg_type: NS_CMD_REGISTER,
+        length: 16,
+        reserved: 0,
+        payload: [0; 32],
+    };
+    reg_msg.payload[0..16].copy_from_slice(&str_to_u8_16("input"));
+    
+    let mut res = user_ipc_send(3, &reg_msg);
+    if res == 0 {
+        let mut reply = crate::task::IpcMessage {
+            sender: 0,
+            msg_type: 0,
+            length: 0,
+            reserved: 0,
+            payload: [0; 32],
+        };
+        res = user_ipc_recv(3, &mut reply);
+        if res == 0 && reply.msg_type == NS_RESP_SUCCESS {
+            user_print("[Input Server] Registro exitoso en el Nameserver!\n");
+        } else {
+            user_print("[Input Server] Error en el registro en el Nameserver.\n");
+        }
+    } else {
+        user_print("[Input Server] Error al conectar con el Nameserver.\n");
+    }
+
+    user_print("[Input Server] Entrando en bucle de servicio IPC...\n");
+
+    loop {
+        let mut msg = crate::task::IpcMessage {
+            sender: 0,
+            msg_type: 0,
+            length: 0,
+            reserved: 0,
+            payload: [0; 32],
+        };
+        let res = user_ipc_recv(crate::task::IPC_WILDCARD, &mut msg);
+        if res == 0 {
+            if msg.sender == crate::task::IPC_SENDER_NOTIFICATION {
+                // Notificación de interrupción física del kernel
+                // Procesar eventos de la Virtqueue
+                drivers::input::process_events(|event| {
+                    // event.event_type == 1 es EV_KEY, event.value == 1 es presionado
+                    if event.event_type == 1 && (event.value == 1 || event.value == 2) {
+                        if let Some(c) = keycode_to_char(event.code) {
+                            user_print("[Input Server] Tecla presionada detectada: ");
+                            let mut single_char_buf = [0u8; 4];
+                            if let Some(s) = c.encode_utf8(&mut single_char_buf).get(..) {
+                                user_print(s);
+                            }
+                            user_print("\n");
+                            push_key(c);
+                        }
+                    }
+                });
+            } else {
+                // Solicitud de algún cliente
+                match msg.msg_type {
+                    INPUT_CMD_GET_KEY => {
+                        let mut reply = crate::task::IpcMessage {
+                            sender: 4,
+                            msg_type: 0,
+                            length: 0,
+                            reserved: 0,
+                            payload: [0; 32],
+                        };
+                        if let Some(c) = pop_key() {
+                            reply.msg_type = INPUT_RESP_KEY;
+                            reply.payload[0] = c as u8;
+                            reply.length = 1;
+                        } else {
+                            reply.msg_type = INPUT_RESP_EMPTY;
+                        }
+                        user_ipc_send(msg.sender as usize, &reply);
+                    }
+                    _ => {
+                        user_print("[Input Server] Comando desconocido\n");
+                        let reply = crate::task::IpcMessage {
+                            sender: 4,
+                            msg_type: NS_RESP_ERROR,
+                            length: 0,
+                            reserved: 0,
+                            payload: [0; 32],
+                        };
+                        user_ipc_send(msg.sender as usize, &reply);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn input_client() {
+    user_print("[Input Client] Buscando el servicio 'input' en el Nameserver (Tarea 3)...\n");
+    let mut lookup_msg = crate::task::IpcMessage {
+        sender: 0,
+        msg_type: NS_CMD_LOOKUP,
+        length: 16,
+        reserved: 0,
+        payload: [0; 32],
+    };
+    lookup_msg.payload[0..16].copy_from_slice(&str_to_u8_16("input"));
+
+    let mut input_task_id = 0;
+    let mut res = user_ipc_send(3, &lookup_msg);
+    if res == 0 {
+        let mut reply = crate::task::IpcMessage {
+            sender: 0,
+            msg_type: 0,
+            length: 0,
+            reserved: 0,
+            payload: [0; 32],
+        };
+        res = user_ipc_recv(3, &mut reply);
+        if res == 0 && reply.msg_type == NS_RESP_SUCCESS {
+            let mut bytes = [0u8; 4];
+            bytes.copy_from_slice(&reply.payload[16..20]);
+            input_task_id = u32::from_ne_bytes(bytes) as usize;
+            user_print("[Input Client] Servicio 'input' resuelto con éxito.\n");
+        } else {
+            user_print("[Input Client] Error al resolver el servicio 'input'.\n");
+            unsafe {
+                core::arch::asm!("ecall", in("a7") 2, clobber_abi("C"));
+            }
+        }
+    } else {
+        user_print("[Input Client] Error al conectar con el Nameserver.\n");
+        unsafe {
+            core::arch::asm!("ecall", in("a7") 2, clobber_abi("C"));
+        }
+    }
+
+    user_print("[Input Client] Entrando en bucle de consulta de teclado...\n");
+
+    loop {
+        // Enviar consulta GET_KEY
+        let msg = crate::task::IpcMessage {
+            sender: 0,
+            msg_type: INPUT_CMD_GET_KEY,
+            length: 0,
+            reserved: 0,
+            payload: [0; 32],
+        };
+        res = user_ipc_send(input_task_id, &msg);
+        if res == 0 {
+            let mut reply = crate::task::IpcMessage {
+                sender: 0,
+                msg_type: 0,
+                length: 0,
+                reserved: 0,
+                payload: [0; 32],
+            };
+            res = user_ipc_recv(input_task_id, &mut reply);
+            if res == 0 && reply.msg_type == INPUT_RESP_KEY {
+                let c = reply.payload[0] as char;
+                user_print("[Input Client] Carácter leído desde el driver de teclado: ");
+                let mut single_char_buf = [0u8; 4];
+                if let Some(s) = c.encode_utf8(&mut single_char_buf).get(..) {
+                    user_print(s);
+                }
+                user_print("\n");
+            }
+        }
+
+        // Esperar un poco para no saturar la CPU
+        for _ in 0..1000000 {
+            unsafe { core::arch::asm!("nop"); }
         }
     }
 }

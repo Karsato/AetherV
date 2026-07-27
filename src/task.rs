@@ -74,7 +74,7 @@ impl Task {
     }
 }
 
-const MAX_TASKS: usize = 4;
+const MAX_TASKS: usize = 6;
 
 pub struct SimpleScheduler {
     pub tasks: [Task; MAX_TASKS],
@@ -90,6 +90,8 @@ impl SimpleScheduler {
             Task::new(1),
             Task::new(2),
             Task::new(3),
+            Task::new(4),
+            Task::new(5),
         ];
         tasks[0].status = TaskStatus::Running; // Tarea principal en ejecución
         Self {
@@ -100,55 +102,58 @@ impl SimpleScheduler {
 
     // Cambiar de tarea (Round-Robin)
     pub fn schedule(&mut self) {
-        let current_idx = self.current_id;
-        let mut next_idx = (current_idx + 1) % MAX_TASKS;
+        loop {
+            let current_idx = self.current_id;
+            let mut next_idx = (current_idx + 1) % MAX_TASKS;
 
-        // Buscar la siguiente tarea lista para ejecutarse
-        while next_idx != current_idx {
-            if self.tasks[next_idx].status == TaskStatus::Ready {
-                break;
+            // Buscar la siguiente tarea lista para ejecutarse
+            while next_idx != current_idx {
+                if self.tasks[next_idx].status == TaskStatus::Ready {
+                    break;
+                }
+                next_idx = (next_idx + 1) % MAX_TASKS;
             }
-            next_idx = (next_idx + 1) % MAX_TASKS;
-        }
 
-        // Si no hay ninguna otra tarea lista
-        if self.tasks[next_idx].status != TaskStatus::Ready {
+            // Si hay una tarea lista para ejecutarse
+            if self.tasks[next_idx].status == TaskStatus::Ready {
+                // Transicionar la tarea actual si estaba en ejecución
+                if self.tasks[current_idx].status == TaskStatus::Running {
+                    self.tasks[current_idx].status = TaskStatus::Ready;
+                }
+
+                // Imprimir traza de cambio de contexto
+                sbi::print_str("[Scheduler] Cambiando de Tarea ");
+                sbi::print_hex(current_idx);
+                sbi::print_str(" a Tarea ");
+                sbi::print_hex(next_idx);
+                sbi::print_str("\n");
+
+                // Activar la nueva tarea
+                self.tasks[next_idx].status = TaskStatus::Running;
+                self.current_id = next_idx;
+
+                let old_context_ptr = &mut self.tasks[current_idx].context as *mut TaskContext;
+                let new_context_ptr = &self.tasks[next_idx].context as *const TaskContext;
+
+                unsafe {
+                    extern "C" {
+                        fn switch_to(old: *mut TaskContext, new: *const TaskContext);
+                    }
+                    switch_to(old_context_ptr, new_context_ptr);
+                }
+                return;
+            }
+
+            // Si no hay ninguna otra tarea lista pero la actual sigue en ejecución
             if self.tasks[current_idx].status == TaskStatus::Running {
                 return; // Continuar ejecutando la misma tarea
-            } else {
-                sbi::print_str("\n[Scheduler] No hay tareas listas. Esperando interrupción...\n");
-                loop {
-                    unsafe {
-                        core::arch::asm!("wfi");
-                    }
-                }
             }
-        }
 
-        // Transicionar la tarea actual si estaba en ejecución
-        if self.tasks[current_idx].status == TaskStatus::Running {
-            self.tasks[current_idx].status = TaskStatus::Ready;
-        }
-
-        // Imprimir traza de cambio de contexto
-        sbi::print_str("[Scheduler] Cambiando de Tarea ");
-        sbi::print_hex(current_idx);
-        sbi::print_str(" a Tarea ");
-        sbi::print_hex(next_idx);
-        sbi::print_str("\n");
-
-        // Activar la nueva tarea
-        self.tasks[next_idx].status = TaskStatus::Running;
-        self.current_id = next_idx;
-
-        let old_context_ptr = &mut self.tasks[current_idx].context as *mut TaskContext;
-        let new_context_ptr = &self.tasks[next_idx].context as *const TaskContext;
-
-        unsafe {
-            extern "C" {
-                fn switch_to(old: *mut TaskContext, new: *const TaskContext);
+            // Si no hay ninguna tarea lista en absoluto, suspender la CPU hasta la próxima interrupción
+            sbi::print_str("\n[Scheduler] No hay tareas listas. Suspendiendo CPU (WFI)...\n");
+            unsafe {
+                core::arch::asm!("wfi");
             }
-            switch_to(old_context_ptr, new_context_ptr);
         }
     }
 

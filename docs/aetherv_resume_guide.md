@@ -122,6 +122,7 @@ Para la transferencia de cadenas de texto inline, se pueden usar los primeros by
 ## 📈 Futuras Fases del Roadmap
 
 Una vez estabilizado el Name Server, el desarrollo de AetherV OS puede seguir la siguiente ruta:
-*   **Fase 4.5: Driver de Teclado y Ratón en U-Mode:** Migrar el controlador VirtIO Input a espacio de usuario y notificarle eventos mediante interrupciones físicas delegadas desde el PLIC con `sys_ipc_notify`.
+*   **Fase 4.5: Driver de Teclado y Ratón en U-Mode (Completado):** Migrado el controlador VirtIO Input a espacio de usuario y notificados los eventos físicos mediante interrupciones delegadas desde el PLIC. Se implementó la optimización de bajo consumo `wfi` en la tarea Idle y en el planificador para reducir a 0% el consumo de CPU host.
 *   **Fase 5: Servidor de Ventanas (Window Manager):** Un proceso U-Mode que actúe de intermediario entre las aplicaciones cliente y el driver GPU, encargándose de mezclar ventanas y buffers en pantalla.
 *   **Fase 6: Sistema de Archivos Virtual (VFS Server):** Mover el acceso a disco a un micro-servidor de archivos.
+*   **Fase 7: User shell:** Implementación de la consola interactiva en U-Mode.
