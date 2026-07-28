@@ -224,14 +224,14 @@ fn nameserver_task() {
         };
         let res = user_ipc_recv(crate::task::IPC_WILDCARD, &mut msg);
         if res == 0 {
-            // user_print("[Nameserver] Solicitud recibida!\n");
+            log_debug("[Nameserver] Solicitud recibida!\n");
             match msg.msg_type {
                 NS_CMD_REGISTER => {
                     let mut name = [0u8; 16];
                     name.copy_from_slice(&msg.payload[0..16]);
                     let task_id = msg.sender as usize;
                     
-                    // user_print("[Nameserver] Comando: Registrar servicio\n");
+                    log_debug("[Nameserver] Comando: Registrar servicio\n");
                     
                     let mut registered = false;
                     unsafe {
@@ -268,7 +268,7 @@ fn nameserver_task() {
                     let mut name = [0u8; 16];
                     name.copy_from_slice(&msg.payload[0..16]);
                     
-                    // user_print("[Nameserver] Comando: Resolver servicio\n");
+                    log_debug("[Nameserver] Comando: Resolver servicio\n");
                     
                     let mut found_id = None;
                     unsafe {
@@ -296,7 +296,7 @@ fn nameserver_task() {
                     user_ipc_send(msg.sender as usize, &reply);
                 }
                 _ => {
-                    user_print("[Nameserver] Comando desconocido\n");
+                    log_debug("[Nameserver] Comando desconocido\n");
                     let reply = crate::task::IpcMessage {
                         sender: 3,
                         msg_type: NS_RESP_ERROR,
@@ -468,7 +468,7 @@ fn wm_composite(gpu_task_id: usize) {
 
 fn window_manager_task() {
     let mut res;
-    user_print("[WM] Buscando el servicio 'display' en el Nameserver (Tarea 3)...\n");
+    log_info("[WM] Buscando el servicio 'display' en el Nameserver (Tarea 3)...\n");
     let mut lookup_msg = crate::task::IpcMessage {
         sender: 0,
         msg_type: NS_CMD_LOOKUP,
@@ -494,7 +494,7 @@ fn window_manager_task() {
                 let mut bytes = [0u8; 4];
                 bytes.copy_from_slice(&reply.payload[16..20]);
                 gpu_task_id = u32::from_ne_bytes(bytes) as usize;
-                user_print("[WM] Servicio 'display' resuelto con éxito.\n");
+                log_info("[WM] Servicio 'display' resuelto con éxito.\n");
                 break;
             }
         }
@@ -502,7 +502,7 @@ fn window_manager_task() {
     }
 
     // Registrar el servicio "wm" en el Nameserver (Tarea 3)
-    user_print("[WM] Registrando servicio 'wm' en el Nameserver (Tarea 3)...\n");
+    log_info("[WM] Registrando servicio 'wm' en el Nameserver (Tarea 3)...\n");
     let mut reg_msg = crate::task::IpcMessage {
         sender: 0,
         msg_type: NS_CMD_REGISTER,
@@ -523,7 +523,7 @@ fn window_manager_task() {
         };
         res = user_ipc_recv(3, &mut reply);
         if res == 0 && reply.msg_type == NS_RESP_SUCCESS {
-            user_print("[WM] Registro de 'wm' exitoso en el Nameserver!\n");
+            log_info("[WM] Registro de 'wm' exitoso en el Nameserver!\n");
         } else {
             user_print("[WM] Error en el registro de 'wm'.\n");
         }
@@ -563,7 +563,7 @@ fn window_manager_task() {
     // Dibujo inicial y refresco
     wm_composite(gpu_task_id);
 
-    user_print("[WM] Entrando en bucle de servicio de ventanas...\n");
+    log_info("[WM] Entrando en bucle de servicio de ventanas...\n");
 
     loop {
         let mut msg = crate::task::IpcMessage {
@@ -788,12 +788,12 @@ fn window_manager_task() {
 }
 
 fn gpu_driver_server() {
-    user_print("[GPU Server] Iniciando inicialización en U-Mode...\n");
+    log_info("[GPU Server] Iniciando inicialización en U-Mode...\n");
     drivers::gpu::init();
-    user_print("[GPU Server] Inicialización completada con éxito.\n");
+    log_info("[GPU Server] Inicialización completada con éxito.\n");
 
     // Registrar el servicio "display" en el Nameserver (Tarea 3)
-    user_print("[GPU Server] Registrando servicio 'display' en el Nameserver (Tarea 3)...\n");
+    log_info("[GPU Server] Registrando servicio 'display' en el Nameserver (Tarea 3)...\n");
     let mut reg_msg = crate::task::IpcMessage {
         sender: 0,
         msg_type: NS_CMD_REGISTER,
@@ -814,7 +814,7 @@ fn gpu_driver_server() {
         };
         res = user_ipc_recv(3, &mut reply);
         if res == 0 && reply.msg_type == NS_RESP_SUCCESS {
-            user_print("[GPU Server] Registro exitoso en el Nameserver!\n");
+            log_info("[GPU Server] Registro exitoso en el Nameserver!\n");
         } else {
             user_print("[GPU Server] Error en el registro en el Nameserver.\n");
         }
@@ -822,7 +822,7 @@ fn gpu_driver_server() {
         user_print("[GPU Server] Error al conectar con el Nameserver.\n");
     }
 
-    user_print("[GPU Server] Entrando en bucle de servicio IPC...\n");
+    log_info("[GPU Server] Entrando en bucle de servicio IPC...\n");
 
     loop {
         #[allow(unused_mut)]
@@ -845,7 +845,7 @@ fn gpu_driver_server() {
         }
 
         if res == 0 {
-            // user_print("[GPU Server] Solicitud recibida!\n");
+            user_print("[GPU Server] Solicitud recibida!\n");
             match msg.msg_type {
                 1 => {
                     user_print("[GPU Server] Comando de dibujo: draw_pattern\n");
@@ -869,7 +869,7 @@ fn gpu_driver_server() {
                     msg.msg_type = 200; // Éxito
                 }
                 _ => {
-                    // user_print("[GPU Server] Comando desconocido\n");
+                    user_print("[GPU Server] Comando desconocido\n");
                     msg.msg_type = 404; // Desconocido
                 }
             }
@@ -971,12 +971,12 @@ fn keycode_to_char(code: u16) -> Option<char> {
 }
 
 fn input_driver_server() {
-    user_print("[Input Server] Iniciando inicialización en U-Mode...\n");
+    log_info("[Input Server] Iniciando inicialización en U-Mode...\n");
     drivers::input::init();
-    user_print("[Input Server] Inicialización completada con éxito.\n");
+    log_info("[Input Server] Inicialización completada con éxito.\n");
 
     // Registrar el servicio "input" en el Nameserver (Tarea 3)
-    user_print("[Input Server] Registrando servicio 'input' en el Nameserver (Tarea 3)...\n");
+    log_info("[Input Server] Registrando servicio 'input' en el Nameserver (Tarea 3)...\n");
     let mut reg_msg = crate::task::IpcMessage {
         sender: 0,
         msg_type: NS_CMD_REGISTER,
@@ -997,7 +997,7 @@ fn input_driver_server() {
         };
         res = user_ipc_recv(3, &mut reply);
         if res == 0 && reply.msg_type == NS_RESP_SUCCESS {
-            user_print("[Input Server] Registro exitoso en el Nameserver!\n");
+            log_info("[Input Server] Registro exitoso en el Nameserver!\n");
         } else {
             user_print("[Input Server] Error en el registro en el Nameserver.\n");
         }
@@ -1005,7 +1005,7 @@ fn input_driver_server() {
         user_print("[Input Server] Error al conectar con el Nameserver.\n");
     }
 
-    user_print("[Input Server] Entrando en bucle de servicio IPC...\n");
+    log_info("[Input Server] Entrando en bucle de servicio IPC...\n");
 
     loop {
         let mut msg = crate::task::IpcMessage {
@@ -1023,7 +1023,7 @@ fn input_driver_server() {
                 drivers::input::process_events(|event| {
                     if event.event_type == 1 && (event.value == 1 || event.value == 2) {
                         if let Some(c) = keycode_to_char(event.code) {
-                            // user_print("[Input Server] Tecla presionada detectada: ");
+                            user_print("[Input Server] Tecla presionada detectada: ");
                             let mut single_char_buf = [0u8; 4];
                             if let Some(s) = c.encode_utf8(&mut single_char_buf).get(..) {
                                 user_print(s);
@@ -1130,7 +1130,7 @@ fn u32_to_str(val: u32, buf: &mut [u8]) -> usize {
 }
 
 fn window_client_1() {
-    // // user_print("[Client 1] Buscando 'wm' en el Nameserver...\n");
+    user_print("[Client 1] Buscando 'wm' en el Nameserver...\n");
     let mut lookup_msg = crate::task::IpcMessage {
         sender: 0,
         msg_type: NS_CMD_LOOKUP,
@@ -1161,7 +1161,7 @@ fn window_client_1() {
         }
         user_yield();
     }
-    // // user_print("[Client 1] Conectado al Window Manager!\n");
+    log_debug("[Client 1] Conectado al Window Manager!\n");
 
     // Crear ventana: "Bouncing Ball"
     // x = 30, y = 240, w = 135 (270), h = 95 (190)
@@ -1291,7 +1291,7 @@ fn window_client_1() {
 }
 
 fn window_client_2() {
-    // // user_print("[Client 2] Buscando 'wm' en el Nameserver...\n");
+    user_print("[Client 2] Buscando 'wm' en el Nameserver...\n");
     let mut lookup_msg = crate::task::IpcMessage {
         sender: 0,
         msg_type: NS_CMD_LOOKUP,
@@ -1322,7 +1322,7 @@ fn window_client_2() {
         }
         user_yield();
     }
-    // // user_print("[Client 2] Conectado al Window Manager!\n");
+    log_debug("[Client 2] Conectado al Window Manager!\n");
 
     // Crear ventana: "Performance Counter"
     // x = 330, y = 240, w = 140 (280), h = 95 (190)
@@ -1492,7 +1492,7 @@ static RAM_DISK: [RamFile; 2] = [
 ];
 
 fn vfs_server() {
-    user_print("[VFS Server] Iniciando en U-Mode...\n");
+    log_info("[VFS Server] Iniciando en U-Mode...\n");
 
     // 1. Registrar servicio "vfs" en Nameserver (Tarea 3) con retry loop
     let mut reg_msg = crate::task::IpcMessage {
@@ -1516,14 +1516,14 @@ fn vfs_server() {
             };
             let res2 = user_ipc_recv(3, &mut reply);
             if res2 == 0 && reply.msg_type == NS_RESP_SUCCESS {
-                user_print("[VFS Server] Registro 'vfs' exitoso en Nameserver!\n");
+                log_info("[VFS Server] Registro 'vfs' exitoso en Nameserver!\n");
                 break;
             }
         }
         user_yield();
     }
 
-    user_print("[VFS Server] Entrando en bucle de servicio IPC...\n");
+    log_info("[VFS Server] Entrando en bucle de servicio IPC...\n");
 
     // Tabla simple de estado por cliente para recordar el archivo abierto
     let mut open_file_idx: [Option<usize>; crate::task::MAX_TASKS] = [None; crate::task::MAX_TASKS];
@@ -1571,7 +1571,7 @@ fn vfs_server() {
                         let size_bytes = (RAM_DISK[file_idx].content.len() as u32).to_ne_bytes();
                         reply.payload[0..4].copy_from_slice(&size_bytes);
                         reply.length = 4;
-                        user_print("[VFS Server] Archivo encontrado y abierto.\n");
+                        log_info("[VFS Server] Archivo encontrado y abierto.\n");
                     } else {
                         user_print("[VFS Server] Archivo no encontrado.\n");
                     }
@@ -1622,6 +1622,14 @@ fn vfs_server() {
 }
 
 fn vfs_client() {
+    // Tarea VFS Client pasiva para evitar disputas de entrada en la Shell
+    loop {
+        user_yield();
+    }
+}
+
+#[allow(dead_code)]
+fn vfs_client_disabled() {
     user_print("[VFS Client] Buscando 'vfs' en el Nameserver...\n");
     let mut lookup_msg = crate::task::IpcMessage {
         sender: 0,
@@ -1771,7 +1779,7 @@ fn panic(info: &PanicInfo) -> ! {
 pub const VFS_CMD_LIST: u32 = 103;
 
 fn shell_task() {
-    user_print("[Shell] Iniciando consola interactiva en U-Mode...\n");
+    log_info("[Shell] Iniciando consola interactiva en U-Mode...\n");
 
     // 1. Resolver direcciones de servicios en el Nameserver (Tarea 3)
     let vfs_task_id = loop {
@@ -1834,7 +1842,7 @@ fn shell_task() {
         user_yield();
     };
 
-    user_print("[Shell] Servicios 'vfs', 'input' y 'wm' vinculados.\n");
+    log_info("[Shell] Servicios 'vfs', 'input' y 'wm' vinculados.\n");
     user_print("aetherv-shell> ");
 
     let mut cmd_buf = [0u8; 32];

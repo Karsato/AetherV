@@ -11,7 +11,7 @@ fn input_print(s: &str) {
         core::arch::asm!(
             "ecall",
             in("a7") 3,
-            in("a0") 3, // FD 3 (LOG_INFO)
+            in("a0") 4, // FD 3 (LOG_INFO)
             in("a1") s.as_ptr() as usize,
             in("a2") s.len(),
             clobber_abi("C"),
