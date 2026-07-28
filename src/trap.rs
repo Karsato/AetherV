@@ -229,6 +229,11 @@ fn handle_external_interrupt() {
 
             // Si es IRQ 6 o 7 (Dispositivos VirtIO Input), notificar al Servidor de Entrada (Tarea 4)
             if irq == 6 || irq == 7 {
+                let base = 0x10001000 + ((irq - 1) as usize) * 0x1000;
+                let int_status = core::ptr::read_volatile((base + 0x60) as *const u32);
+                core::ptr::write_volatile((base + 0x64) as *mut u32, int_status & 0x3);
+
+
                 crate::task::sys_ipc_notify(4, 1);
             }
 

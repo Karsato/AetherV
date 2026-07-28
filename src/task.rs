@@ -169,6 +169,7 @@ impl SimpleScheduler {
                     extern "C" {
                         fn switch_to(old: *mut TaskContext, new: *const TaskContext);
                     }
+                    sbi::sbi_set_timer(sbi::get_time() + crate::trap::TIMER_INTERVAL);
                     switch_to(old_context_ptr, new_context_ptr);
                 }
                 return;
@@ -182,8 +183,10 @@ impl SimpleScheduler {
             // Si no hay ninguna tarea lista en absoluto, suspender la CPU hasta la próxima interrupción
             sbi::print_str("\n[Scheduler] No hay tareas listas. Suspendiendo CPU (WFI)...\n");
             unsafe {
+                core::arch::asm!("csrs sstatus, {}", in(reg) (1 << 1));
                 core::arch::asm!("wfi");
             }
+            sbi::sbi_set_timer(sbi::get_time() + crate::trap::TIMER_INTERVAL);
         }
     }
 

@@ -2,13 +2,12 @@
 #![allow(static_mut_refs)]
 
 use super::{user_ipc_recv, user_ipc_send, user_print, log_info, log_debug,
-            ns_lookup, str_to_u8_16,
+            str_to_u8_16,
             NS_CMD_REGISTER, NS_RESP_SUCCESS, NS_RESP_ERROR,
             INPUT_CMD_GET_KEY, INPUT_RESP_KEY, INPUT_RESP_EMPTY};
 use crate::task::{IpcMessage, IPC_WILDCARD, IPC_SENDER_NOTIFICATION};
 use crate::drivers;
 
-// Cola circular de teclas
 pub static mut KEY_BUFFER: [char; 64] = ['\0'; 64];
 static mut KEY_HEAD: usize = 0;
 static mut KEY_TAIL: usize = 0;
@@ -94,24 +93,7 @@ pub fn input_driver_server() {
                 drivers::input::process_events(|event| {
                     if event.event_type == 1 && (event.value == 1 || event.value == 2) {
                         if let Some(c) = keycode_to_char(event.code) {
-                            log_debug("[Input Server] Tecla detectada\n");
-
-                            // Lookup WM y notificar tecla
-                            let mut wm_task_id = 0;
-                            if let Some(id) = ns_lookup("wm") {
-                                wm_task_id = id;
-                            }
-                            if wm_task_id != 0 {
-                                let mut wm_msg = IpcMessage {
-                                    sender: 0,
-                                    msg_type: 2004,
-                                    length: 1,
-                                    reserved: 0,
-                                    payload: [0; 32],
-                                };
-                                wm_msg.payload[0] = c as u8;
-                                user_ipc_send(wm_task_id, &wm_msg);
-                            }
+                            log_debug("[Input Server] Tecla detectada y encolada.\n");
                             push_key(c);
                         }
                     }

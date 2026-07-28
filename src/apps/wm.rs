@@ -1,9 +1,9 @@
 // src/apps/wm.rs
 #![allow(static_mut_refs)]
 
-use super::{user_ipc_recv, user_ipc_send, user_print, log_info,
-            ns_lookup, ns_register, str_to_u8_16,
-            NS_CMD_LOOKUP, NS_CMD_REGISTER, NS_RESP_SUCCESS,
+use super::{user_ipc_recv, user_ipc_send, user_print, log_info, user_yield,
+            ns_lookup, str_to_u8_16,
+            NS_CMD_REGISTER, NS_RESP_SUCCESS,
             WM_CMD_CREATE_WINDOW, WM_CMD_DRAW_RECT, WM_CMD_DRAW_TEXT, WM_CMD_UPDATE,
             WM_RESP_SUCCESS, WM_RESP_ERROR};
 use crate::task::{IpcMessage, IPC_WILDCARD};
@@ -162,7 +162,9 @@ pub fn window_manager_task() {
         WINDOWS[1] = Some(Window { id: 1, x: 330, y: 40, w: 280, h: 180, title: title1, bg_color: 0xFF1A1B26, active: false });
     }
 
+    // Renderizado inicial explícito
     wm_composite(gpu_task_id);
+    user_yield();
     log_info("[WM] Entrando en bucle de servicio de ventanas...\n");
 
     loop {
