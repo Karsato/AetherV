@@ -70,6 +70,7 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     let user_entry_va5 = (window_client_1 as *const () as usize) - 0x40000000;
     let user_entry_va6 = (window_client_2 as *const () as usize) - 0x40000000;
     let user_entry_va7 = (vfs_server as *const () as usize) - 0x40000000;
+    let user_entry_va8 = (vfs_client as *const () as usize) - 0x40000000;
     // Crear y registrar tareas secundarias (Tareas en Modo Usuario)
     task::create_user_task(1, user_entry_va1); // Tarea 1: Servidor GPU
     task::create_user_task(2, user_entry_va2); // Tarea 2: Window Manager
@@ -78,7 +79,8 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     task::create_user_task(5, user_entry_va5); // Tarea 5: Cliente Window 1
     task::create_user_task(6, user_entry_va6); // Tarea 6: Cliente Window 2
     task::create_user_task(7, user_entry_va7); // Tarea 7: VFS Server
-    sbi::print_str("[Kernel] Tareas de usuario 1 a 7 creadas.\n");
+    task::create_user_task(8, user_entry_va8); // Tarea 8: VFS Client
+    sbi::print_str("[Kernel] Tareas de usuario 1 a 8 creadas.\n");
 
     sbi::print_str("[Kernel] Iniciando planificador multitarea...\n");
 
@@ -1465,7 +1467,7 @@ struct RamFile {
 static RAM_DISK: [RamFile; 2] = [
     RamFile {
         path: b"/readme.txt",
-        content: b"Bienvenido a AetherV OS - Microkernel RISC-V\n",
+        content: b"AetherV OS - Microkernel RISC-V\n", // 32 bytes exactos
     },
     RamFile {
         path: b"/config.sys",
@@ -1603,6 +1605,93 @@ fn vfs_server() {
     }
 }
 
+fn vfs_client() {
+    user_print("[VFS Client] Buscando 'vfs' en el Nameserver...\n");
+    let mut lookup_msg = crate::task::IpcMessage {
+        sender: 0,
+        msg_type: NS_CMD_LOOKUP,
+        length: 16,
+        reserved: 0,
+        payload: [0; 32],
+    };
+    lookup_msg.payload[0..16].copy_from_slice(&str_to_u8_16("vfs"));
+
+    let vfs_task_id;
+    loop {
+        let mut reply = crate::task::IpcMessage {
+            sender: 0,
+            msg_type: 0,
+            length: 0,
+            reserved: 0,
+            payload: [0; 32],
+        };
+        let res = user_ipc_send(3, &lookup_msg);
+        if res == 0 {
+            let res2 = user_ipc_recv(3, &mut reply);
+            if res2 == 0 && reply.msg_type == NS_RESP_SUCCESS {
+                let mut bytes = [0u8; 4];
+                bytes.copy_from_slice(&reply.payload[16..20]);
+                vfs_task_id = u32::from_ne_bytes(bytes) as usize;
+                break;
+            }
+        }
+        user_yield();
+    }
+    user_print("[VFS Client] Conectado con éxito al VFS Server!\n");
+
+    // 1. Abrir el archivo "/readme.txt"
+    user_print("[VFS Client] Solicitando abrir '/readme.txt'...\n");
+    let open_msg = make_vfs_open_msg(b"/readme.txt");
+    let mut reply = crate::task::IpcMessage {
+        sender: 0,
+        msg_type: 0,
+        length: 0,
+        reserved: 0,
+        payload: [0; 32],
+    };
+
+    if user_ipc_send(vfs_task_id, &open_msg) == 0 {
+        if user_ipc_recv(vfs_task_id, &mut reply) == 0 && reply.msg_type == VFS_RESP_OK {
+            user_print("[VFS Client] Archivo '/readme.txt' abierto con éxito.\n");
+
+            // 2. Leer el contenido por IPC
+            let read_msg = crate::task::IpcMessage {
+                sender: 0,
+                msg_type: VFS_CMD_READ,
+                length: 0,
+                reserved: 0,
+                payload: [0; 32],
+            };
+
+            if user_ipc_send(vfs_task_id, &read_msg) == 0 {
+                if user_ipc_recv(vfs_task_id, &mut reply) == 0 && reply.msg_type == VFS_RESP_OK {
+                    user_print("[VFS Client] Contenido del archivo leido vía IPC:\n>>> ");
+                    let len = reply.length as usize;
+                    if let Ok(content_str) = core::str::from_utf8(&reply.payload[..len]) {
+                        user_print(content_str);
+                    }
+                    user_print("<<<\n");
+                }
+            }
+
+            // 3. Cerrar archivo
+            let close_msg = crate::task::IpcMessage {
+                sender: 0,
+                msg_type: VFS_CMD_CLOSE,
+                length: 0,
+                reserved: 0,
+                payload: [0; 32],
+            };
+            user_ipc_send(vfs_task_id, &close_msg);
+            user_ipc_recv(vfs_task_id, &mut reply);
+        }
+    }
+
+    loop {
+        user_yield();
+    }
+}
+
 // ==========================================
 // COMANDOS Y MENSAJES IPC PARA EL VFS SERVER
 // ==========================================
@@ -1630,14 +1719,14 @@ pub fn make_vfs_open_msg(path: &[u8]) -> task::IpcMessage {
 
 /// Helper para responder desde el VFS Server con datos del archivo
 pub fn make_vfs_read_resp(data: &[u8]) -> task::IpcMessage {
+    let copy_len = data.len().min(32);
     let mut msg = task::IpcMessage {
         sender: 0,
         msg_type: VFS_RESP_OK,
-        length: data.len() as u32,
+        length: copy_len as u32,
         reserved: 0,
         payload: [0; 32],
     };
-    let copy_len = data.len().min(32);
     msg.payload[..copy_len].copy_from_slice(&data[..copy_len]);
     msg
 }

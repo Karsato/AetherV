@@ -74,7 +74,7 @@ impl Task {
     }
 }
 
-pub const MAX_TASKS: usize = 8;
+pub const MAX_TASKS: usize = 16;
 
 pub struct SimpleScheduler {
     pub tasks: [Task; MAX_TASKS],
@@ -94,6 +94,14 @@ impl SimpleScheduler {
             Task::new(5),
             Task::new(6),
             Task::new(7),
+            Task::new(8),
+            Task::new(9),
+            Task::new(10),
+            Task::new(11),
+            Task::new(12),
+            Task::new(13),
+            Task::new(14),
+            Task::new(15),
         ];
         tasks[0].status = TaskStatus::Running; // Tarea principal en ejecución
         Self {
