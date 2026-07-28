@@ -177,14 +177,11 @@ pub extern "C" fn rust_trap_handler(tf: &mut TrapFrame) {
 }
 
 fn handle_timer_interrupt() {
-    // Imprimir un punto en la consola serial para denotar el tick del timer
-    sbi::print_str(".");
-    // Programar la siguiente interrupción de temporizador
-    sbi::sbi_set_timer(sbi::get_time() + TIMER_INTERVAL);
-    // Cambiar preventivamente de tarea (Preemptive context switch)
-    unsafe {
-        crate::task::SCHEDULER.schedule();
+    if crate::task::is_debug_enabled() {
+        sbi::print_str(".");
     }
+    sbi::sbi_set_timer(sbi::get_time() + TIMER_INTERVAL);
+    unsafe { crate::task::SCHEDULER.schedule(); }
 }
 
 pub fn init() {
@@ -218,9 +215,9 @@ fn handle_external_interrupt() {
         let irq = core::ptr::read_volatile(claim_ptr);
 
         if irq != 0 {
-            sbi::print_str("[Trap] External Interrupt claimed: ");
+            if crate::task::is_debug_enabled() { sbi::print_str("[Trap] External Interrupt claimed: ");
             sbi::print_hex(irq as usize);
-            sbi::print_str("\n");
+            sbi::print_str("\n"); }
 
             // Si es IRQ 6 o 7 (Dispositivos VirtIO Input), notificar al Servidor de Entrada (Tarea 4)
             if irq == 6 || irq == 7 {

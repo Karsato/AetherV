@@ -211,14 +211,14 @@ fn nameserver_task() {
         };
         let res = user_ipc_recv(crate::task::IPC_WILDCARD, &mut msg);
         if res == 0 {
-            user_print("[Nameserver] Solicitud recibida!\n");
+            // user_print("[Nameserver] Solicitud recibida!\n");
             match msg.msg_type {
                 NS_CMD_REGISTER => {
                     let mut name = [0u8; 16];
                     name.copy_from_slice(&msg.payload[0..16]);
                     let task_id = msg.sender as usize;
                     
-                    user_print("[Nameserver] Comando: Registrar servicio\n");
+                    // user_print("[Nameserver] Comando: Registrar servicio\n");
                     
                     let mut registered = false;
                     unsafe {
@@ -255,7 +255,7 @@ fn nameserver_task() {
                     let mut name = [0u8; 16];
                     name.copy_from_slice(&msg.payload[0..16]);
                     
-                    user_print("[Nameserver] Comando: Resolver servicio\n");
+                    // user_print("[Nameserver] Comando: Resolver servicio\n");
                     
                     let mut found_id = None;
                     unsafe {
@@ -832,7 +832,7 @@ fn gpu_driver_server() {
         }
 
         if res == 0 {
-            user_print("[GPU Server] Solicitud recibida!\n");
+            // user_print("[GPU Server] Solicitud recibida!\n");
             match msg.msg_type {
                 1 => {
                     user_print("[GPU Server] Comando de dibujo: draw_pattern\n");
@@ -856,7 +856,7 @@ fn gpu_driver_server() {
                     msg.msg_type = 200; // Éxito
                 }
                 _ => {
-                    user_print("[GPU Server] Comando desconocido\n");
+                    // user_print("[GPU Server] Comando desconocido\n");
                     msg.msg_type = 404; // Desconocido
                 }
             }
@@ -1010,7 +1010,7 @@ fn input_driver_server() {
                 drivers::input::process_events(|event| {
                     if event.event_type == 1 && (event.value == 1 || event.value == 2) {
                         if let Some(c) = keycode_to_char(event.code) {
-                            user_print("[Input Server] Tecla presionada detectada: ");
+                            // user_print("[Input Server] Tecla presionada detectada: ");
                             let mut single_char_buf = [0u8; 4];
                             if let Some(s) = c.encode_utf8(&mut single_char_buf).get(..) {
                                 user_print(s);
@@ -1117,7 +1117,7 @@ fn u32_to_str(val: u32, buf: &mut [u8]) -> usize {
 }
 
 fn window_client_1() {
-    user_print("[Client 1] Buscando 'wm' en el Nameserver...\n");
+    // // user_print("[Client 1] Buscando 'wm' en el Nameserver...\n");
     let mut lookup_msg = crate::task::IpcMessage {
         sender: 0,
         msg_type: NS_CMD_LOOKUP,
@@ -1148,7 +1148,7 @@ fn window_client_1() {
         }
         user_yield();
     }
-    user_print("[Client 1] Conectado al Window Manager!\n");
+    // // user_print("[Client 1] Conectado al Window Manager!\n");
 
     // Crear ventana: "Bouncing Ball"
     // x = 30, y = 240, w = 135 (270), h = 95 (190)
@@ -1278,7 +1278,7 @@ fn window_client_1() {
 }
 
 fn window_client_2() {
-    user_print("[Client 2] Buscando 'wm' en el Nameserver...\n");
+    // // user_print("[Client 2] Buscando 'wm' en el Nameserver...\n");
     let mut lookup_msg = crate::task::IpcMessage {
         sender: 0,
         msg_type: NS_CMD_LOOKUP,
@@ -1309,7 +1309,7 @@ fn window_client_2() {
         }
         user_yield();
     }
-    user_print("[Client 2] Conectado al Window Manager!\n");
+    // // user_print("[Client 2] Conectado al Window Manager!\n");
 
     // Crear ventana: "Performance Counter"
     // x = 330, y = 240, w = 140 (280), h = 95 (190)

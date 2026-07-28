@@ -127,6 +127,13 @@ pub unsafe fn parse_fdt(fdt_ptr: usize) {
 
                     if is_string && len > 1 {
                         let val_str = core::str::from_utf8_unchecked(core::slice::from_raw_parts(val_ptr, len - 1));
+
+                        if prop_name == "bootargs" && val_str.contains("debug") {
+                            unsafe {
+                               crate::task::DEBUG_LOGS = true;
+                            }
+                        }
+
                         sbi::print_str("\"");
                         sbi::print_str(val_str);
                         sbi::print_str("\"");
