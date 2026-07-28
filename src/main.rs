@@ -1455,6 +1455,45 @@ fn window_client_2() {
     }
 }
 
+// ==========================================
+// COMANDOS Y MENSAJES IPC PARA EL VFS SERVER
+// ==========================================
+
+pub const VFS_CMD_OPEN: u32 = 100;
+pub const VFS_CMD_READ: u32 = 101;
+pub const VFS_CMD_CLOSE: u32 = 102;
+
+pub const VFS_RESP_OK: u32 = 200;
+pub const VFS_RESP_ERR: u32 = 400;
+
+/// Helper para crear una petición de apertura de archivo en U-Mode
+pub fn make_vfs_open_msg(path: &[u8]) -> task::IpcMessage {
+    let mut msg = task::IpcMessage {
+        sender: 0,
+        msg_type: VFS_CMD_OPEN,
+        length: path.len() as u32,
+        reserved: 0,
+        payload: [0; 32],
+    };
+    let copy_len = path.len().min(32);
+    msg.payload[..copy_len].copy_from_slice(&path[..copy_len]);
+    msg
+}
+
+/// Helper para responder desde el VFS Server con datos del archivo
+pub fn make_vfs_read_resp(data: &[u8]) -> task::IpcMessage {
+    let mut msg = task::IpcMessage {
+        sender: 0,
+        msg_type: VFS_RESP_OK,
+        length: data.len() as u32,
+        reserved: 0,
+        payload: [0; 32],
+    };
+    let copy_len = data.len().min(32);
+    msg.payload[..copy_len].copy_from_slice(&data[..copy_len]);
+    msg
+}
+
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     sbi::print_str("\n[KERNEL PANIC]: ");
