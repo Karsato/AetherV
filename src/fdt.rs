@@ -143,11 +143,7 @@ pub unsafe fn parse_fdt(fdt_ptr: usize) {
                             }
                         }
 
-                        if prop_name == "bootargs" && val_str.contains("debug") {
-                            unsafe {
-                               crate::task::DEBUG_LOGS = true;
-                            }
-                        }
+
 
                         sbi::print_str("\"");
                         sbi::print_str(val_str);

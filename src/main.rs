@@ -98,7 +98,7 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
             count = 0;
             loops += 1;
             if loops == 3 {
-                sbi::print_str("\n[Main Thread] Entrando en estado de reposo de bajo consumo (WFI)...\n");
+                log_info("\n[Main Thread] Entrando en estado de reposo de bajo consumo (WFI)...\n");
                 break;
             }
         }
@@ -845,10 +845,10 @@ fn gpu_driver_server() {
         }
 
         if res == 0 {
-            user_print("[GPU Server] Solicitud recibida!\n");
+            log_debug("[GPU Server] Solicitud recibida!\n");
             match msg.msg_type {
                 1 => {
-                    user_print("[GPU Server] Comando de dibujo: draw_pattern\n");
+                    log_debug("[GPU Server] Comando de dibujo: draw_pattern\n");
                     drivers::gpu::draw_pattern();
                     drivers::gpu::flush_screen(0x10008000);
                     msg.msg_type = 200; // Éxito
@@ -857,7 +857,7 @@ fn gpu_driver_server() {
                     let r = msg.payload[0] as u32;
                     let g = msg.payload[1] as u32;
                     let b = msg.payload[2] as u32;
-                    user_print("[GPU Server] Comando de dibujo: rellenar color sólido\n");
+                    log_debug("[GPU Server] Comando de dibujo: rellenar color sólido\n");
                     unsafe {
                         let fb = &mut drivers::gpu::FRAMEBUFFER;
                         let color_val = 0xFF000000 | (r << 16) | (g << 8) | b;
@@ -869,7 +869,7 @@ fn gpu_driver_server() {
                     msg.msg_type = 200; // Éxito
                 }
                 _ => {
-                    user_print("[GPU Server] Comando desconocido\n");
+                    log_debug("[GPU Server] Comando desconocido\n");
                     msg.msg_type = 404; // Desconocido
                 }
             }
@@ -1023,12 +1023,12 @@ fn input_driver_server() {
                 drivers::input::process_events(|event| {
                     if event.event_type == 1 && (event.value == 1 || event.value == 2) {
                         if let Some(c) = keycode_to_char(event.code) {
-                            user_print("[Input Server] Tecla presionada detectada: ");
+                            log_debug("[Input Server] Tecla presionada detectada: ");
                             let mut single_char_buf = [0u8; 4];
                             if let Some(s) = c.encode_utf8(&mut single_char_buf).get(..) {
-                                user_print(s);
+                                log_debug(s);
                             }
-                            user_print("\n");
+                            log_debug("\n");
                             
                             // Intentar enviar al Window Manager directly
                             let mut lookup_msg = crate::task::IpcMessage {
