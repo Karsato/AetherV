@@ -1,3 +1,9 @@
 /target
 **/*.rs.bk
 Cargo.lock
+.aider*
+
+qemu.log
+kernel_summary.txt
+kernel_summary.xml
+.obsidian/

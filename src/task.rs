@@ -74,7 +74,7 @@ impl Task {
     }
 }
 
-const MAX_TASKS: usize = 6;
+pub const MAX_TASKS: usize = 8;
 
 pub struct SimpleScheduler {
     pub tasks: [Task; MAX_TASKS],
@@ -92,6 +92,8 @@ impl SimpleScheduler {
             Task::new(3),
             Task::new(4),
             Task::new(5),
+            Task::new(6),
+            Task::new(7),
         ];
         tasks[0].status = TaskStatus::Running; // Tarea principal en ejecución
         Self {
@@ -254,6 +256,11 @@ pub fn create_user_task(id: usize, entry: usize) {
 pub fn sys_ipc_send(dest_id: usize, msg_ptr: usize) -> isize {
     unsafe {
         let sender_id = SCHEDULER.current_id;
+        sbi::print_str("[IPC DEBUG] sys_ipc_send from ");
+        sbi::print_hex(sender_id);
+        sbi::print_str(" to ");
+        sbi::print_hex(dest_id);
+        sbi::print_str("\n");
         if dest_id >= MAX_TASKS || dest_id == sender_id {
             return -1; // Destino inválido
         }
@@ -265,6 +272,11 @@ pub fn sys_ipc_send(dest_id: usize, msg_ptr: usize) -> isize {
         // Comprobar si el receptor ya está esperando un mensaje de nosotros (o de cualquiera)
         if dest.status == TaskStatus::BlockedRecv && (dest.ipc_partner == sender_id || dest.ipc_partner == IPC_WILDCARD) {
             // Rendezvous!
+            sbi::print_str("[IPC DEBUG] sys_ipc_send rendezvous from ");
+            sbi::print_hex(sender_id);
+            sbi::print_str(" to ");
+            sbi::print_hex(dest_id);
+            sbi::print_str("\n");
             let dest_buf_ptr = dest.ipc_buffer_ptr;
             
             // Copiar mensaje
@@ -311,6 +323,11 @@ pub fn sys_ipc_send(dest_id: usize, msg_ptr: usize) -> isize {
 pub fn sys_ipc_recv(src_id: usize, msg_ptr: usize) -> isize {
     unsafe {
         let receiver_id = SCHEDULER.current_id;
+        sbi::print_str("[IPC DEBUG] sys_ipc_recv receiver ");
+        sbi::print_hex(receiver_id);
+        sbi::print_str(" from ");
+        sbi::print_hex(src_id);
+        sbi::print_str("\n");
         if src_id != IPC_WILDCARD && src_id >= MAX_TASKS {
             return -1; // Origen inválido
         }
@@ -345,6 +362,11 @@ pub fn sys_ipc_recv(src_id: usize, msg_ptr: usize) -> isize {
 
         if let Some(sender_id) = found_sender_id {
             // Rendezvous!
+            sbi::print_str("[IPC DEBUG] sys_ipc_recv rendezvous receiver ");
+            sbi::print_hex(receiver_id);
+            sbi::print_str(" from ");
+            sbi::print_hex(sender_id);
+            sbi::print_str("\n");
             let sender = &mut SCHEDULER.tasks[sender_id];
             let sender_buf_ptr = sender.ipc_buffer_ptr;
 

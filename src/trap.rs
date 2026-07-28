@@ -13,7 +13,7 @@ pub struct TrapFrame {
 }
 
 // Intervalo de tiempo para la simulación del reloj (ajustado para QEMU)
-const TIMER_INTERVAL: u64 = 1_000_000;
+pub const TIMER_INTERVAL: u64 = 1_000_000;
 
 #[no_mangle]
 pub extern "C" fn rust_trap_handler(tf: &mut TrapFrame) {
@@ -60,7 +60,13 @@ pub extern "C" fn rust_trap_handler(tf: &mut TrapFrame) {
             8 => { // Environment Call desde U-mode
                 let syscall_id = tf.regs[17]; // a7 es x17
                 match syscall_id {
-                    1 => { // sys_yield
+                    1 => { // sys_putchar (para que panics de U-mode impriman en consola)
+                        let c = tf.regs[10];
+                        sbi::sbi_putchar(c);
+                        tf.regs[10] = 0;
+                        tf.sepc += 4;
+                    }
+                    10 => { // sys_yield
                         tf.sepc += 4;
                         crate::task::yield_cpu();
                     }
@@ -166,6 +172,7 @@ pub extern "C" fn rust_trap_handler(tf: &mut TrapFrame) {
                 panic!("Excepción fatal no controlada.");
             }
         }
+
     }
 }
 
