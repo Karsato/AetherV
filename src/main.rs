@@ -69,6 +69,7 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     let user_entry_va4 = (input_driver_server as *const () as usize) - 0x40000000;
     let user_entry_va5 = (window_client_1 as *const () as usize) - 0x40000000;
     let user_entry_va6 = (window_client_2 as *const () as usize) - 0x40000000;
+    let user_entry_va7 = (vfs_server as *const () as usize) - 0x40000000;
     // Crear y registrar tareas secundarias (Tareas en Modo Usuario)
     task::create_user_task(1, user_entry_va1); // Tarea 1: Servidor GPU
     task::create_user_task(2, user_entry_va2); // Tarea 2: Window Manager
@@ -76,7 +77,8 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     task::create_user_task(4, user_entry_va4); // Tarea 4: Servidor Input
     task::create_user_task(5, user_entry_va5); // Tarea 5: Cliente Window 1
     task::create_user_task(6, user_entry_va6); // Tarea 6: Cliente Window 2
-    sbi::print_str("[Kernel] Tareas de usuario 1 a 6 creadas.\n");
+    task::create_user_task(7, user_entry_va7); // Tarea 7: VFS Server
+    sbi::print_str("[Kernel] Tareas de usuario 1 a 7 creadas.\n");
 
     sbi::print_str("[Kernel] Iniciando planificador multitarea...\n");
 
@@ -1451,6 +1453,152 @@ fn window_client_2() {
         // Retardo
         for _ in 0..10 {
             user_yield();
+        }
+    }
+}
+
+struct RamFile {
+    path: &'static [u8],
+    content: &'static [u8],
+}
+
+static RAM_DISK: [RamFile; 2] = [
+    RamFile {
+        path: b"/readme.txt",
+        content: b"Bienvenido a AetherV OS - Microkernel RISC-V\n",
+    },
+    RamFile {
+        path: b"/config.sys",
+        content: b"version=1.2-alpha\n",
+    },
+];
+
+fn vfs_server() {
+    user_print("[VFS Server] Iniciando en U-Mode...\n");
+
+    // 1. Registrar servicio "vfs" en Nameserver (Tarea 3) con retry loop
+    let mut reg_msg = crate::task::IpcMessage {
+        sender: 0,
+        msg_type: NS_CMD_REGISTER,
+        length: 16,
+        reserved: 0,
+        payload: [0; 32],
+    };
+    reg_msg.payload[0..16].copy_from_slice(&str_to_u8_16("vfs"));
+
+    loop {
+        let res = user_ipc_send(3, &reg_msg);
+        if res == 0 {
+            let mut reply = crate::task::IpcMessage {
+                sender: 0,
+                msg_type: 0,
+                length: 0,
+                reserved: 0,
+                payload: [0; 32],
+            };
+            let res2 = user_ipc_recv(3, &mut reply);
+            if res2 == 0 && reply.msg_type == NS_RESP_SUCCESS {
+                user_print("[VFS Server] Registro 'vfs' exitoso en Nameserver!\n");
+                break;
+            }
+        }
+        user_yield();
+    }
+
+    user_print("[VFS Server] Entrando en bucle de servicio IPC...\n");
+
+    // Tabla simple de estado por cliente para recordar el archivo abierto
+    let mut open_file_idx: [Option<usize>; crate::task::MAX_TASKS] = [None; crate::task::MAX_TASKS];
+
+    loop {
+        let mut msg = crate::task::IpcMessage {
+            sender: 0,
+            msg_type: 0,
+            length: 0,
+            reserved: 0,
+            payload: [0; 32],
+        };
+
+        let res = user_ipc_recv(crate::task::IPC_WILDCARD, &mut msg);
+        if res == 0 {
+            let client_id = msg.sender as usize;
+            match msg.msg_type {
+                VFS_CMD_OPEN => {
+                    let mut path_len = 0;
+                    while path_len < 32 && msg.payload[path_len] != 0 {
+                        path_len += 1;
+                    }
+
+                    let requested_path = &msg.payload[..path_len];
+                    let mut found = None;
+
+                    for (idx, file) in RAM_DISK.iter().enumerate() {
+                        if file.path == requested_path {
+                            found = Some(idx);
+                            break;
+                        }
+                    }
+
+                    let mut reply = crate::task::IpcMessage {
+                        sender: 7,
+                        msg_type: VFS_RESP_ERR,
+                        length: 0,
+                        reserved: 0,
+                        payload: [0; 32],
+                    };
+
+                    if let Some(file_idx) = found {
+                        open_file_idx[client_id] = Some(file_idx);
+                        reply.msg_type = VFS_RESP_OK;
+                        let size_bytes = (RAM_DISK[file_idx].content.len() as u32).to_ne_bytes();
+                        reply.payload[0..4].copy_from_slice(&size_bytes);
+                        reply.length = 4;
+                        user_print("[VFS Server] Archivo encontrado y abierto.\n");
+                    } else {
+                        user_print("[VFS Server] Archivo no encontrado.\n");
+                    }
+
+                    user_ipc_send(client_id, &reply);
+                }
+                VFS_CMD_READ => {
+                    let mut reply = crate::task::IpcMessage {
+                        sender: 7,
+                        msg_type: VFS_RESP_ERR,
+                        length: 0,
+                        reserved: 0,
+                        payload: [0; 32],
+                    };
+
+                    if let Some(file_idx) = open_file_idx[client_id] {
+                        let data = RAM_DISK[file_idx].content;
+                        reply = make_vfs_read_resp(data);
+                        reply.sender = 7;
+                    }
+
+                    user_ipc_send(client_id, &reply);
+                }
+                VFS_CMD_CLOSE => {
+                    open_file_idx[client_id] = None;
+                    let reply = crate::task::IpcMessage {
+                        sender: 7,
+                        msg_type: VFS_RESP_OK,
+                        length: 0,
+                        reserved: 0,
+                        payload: [0; 32],
+                    };
+                    user_ipc_send(client_id, &reply);
+                }
+                _ => {
+                    let reply = crate::task::IpcMessage {
+                        sender: 7,
+                        msg_type: VFS_RESP_ERR,
+                        length: 0,
+                        reserved: 0,
+                        payload: [0; 32],
+                    };
+                    user_ipc_send(client_id, &reply);
+                }
+            }
         }
     }
 }
