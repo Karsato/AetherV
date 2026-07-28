@@ -128,6 +128,21 @@ pub unsafe fn parse_fdt(fdt_ptr: usize) {
                     if is_string && len > 1 {
                         let val_str = core::str::from_utf8_unchecked(core::slice::from_raw_parts(val_ptr, len - 1));
 
+                        if prop_name == "bootargs" {
+                            unsafe {
+                                if val_str.contains("loglevel=0") || val_str.contains("quiet") {
+                                    crate::task::LOG_LEVEL = 0;
+                                } else if val_str.contains("loglevel=1") {
+                                    crate::task::LOG_LEVEL = 1;
+                                } else if val_str.contains("loglevel=2") {
+                                    crate::task::LOG_LEVEL = 2;
+                                } else if val_str.contains("loglevel=3") || val_str.contains("debug") {
+                                    crate::task::LOG_LEVEL = 3;
+                                    crate::task::DEBUG_LOGS = true;
+                                }
+                            }
+                        }
+
                         if prop_name == "bootargs" && val_str.contains("debug") {
                             unsafe {
                                crate::task::DEBUG_LOGS = true;

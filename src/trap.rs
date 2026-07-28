@@ -76,12 +76,20 @@ pub extern "C" fn rust_trap_handler(tf: &mut TrapFrame) {
                             crate::task::SCHEDULER.exit_current_task();
                         }
                     }
-                    3 => { // sys_write (para imprimir desde U-mode)
-                        let ptr = tf.regs[10] as *const u8; // a0
-                        let len = tf.regs[11]; // a1
+                    3 => { // sys_write (fd, ptr, len)
+                        let fd = tf.regs[10];               // a0: FD (1=stdout, 2=stderr, 3=info, 4=debug)
+                        let ptr = tf.regs[11] as *const u8; // a1: buffer ptr
+                        let len = tf.regs[12];              // a2: length
                         let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
                         if let Ok(s) = core::str::from_utf8(slice) {
-                            sbi::print_str(s);
+                            let current_level = crate::task::get_log_level();
+                            match fd {
+                                1 => sbi::print_str(s), // stdout (Shell): siempre visible
+                                2 if current_level >= 1 => sbi::print_str(s), // stderr / log_error
+                                3 if current_level >= 2 => sbi::print_str(s), // log_info
+                                4 if current_level >= 3 => sbi::print_str(s), // log_debug
+                                _ => {} // Silenciado por LogLevel
+                            }
                         }
                         tf.regs[10] = 0; // Retornar 0 (éxito) en a0
                         tf.sepc += 4;

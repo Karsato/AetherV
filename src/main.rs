@@ -129,19 +129,32 @@ pub const INPUT_CMD_GET_KEY: u32 = 2001;
 pub const INPUT_RESP_KEY:     u32 = 2002;
 pub const INPUT_RESP_EMPTY:   u32 = 2003;
 
-fn user_print(s: &str) {
+fn sys_write_fd(fd: usize, s: &str) {
     let ptr = s.as_ptr() as usize;
     let len = s.len();
     unsafe {
         core::arch::asm!(
             "ecall",
             in("a7") 3,
-            inout("a0") ptr => _,
-            in("a1") len,
+            in("a0") fd,
+            in("a1") ptr,
+            in("a2") len,
             clobber_abi("C"),
         );
     }
 }
+
+#[inline(always)]
+fn user_print(s: &str) { sys_write_fd(1, s); }
+#[allow(dead_code)]
+#[inline(always)]
+fn log_error(s: &str) { sys_write_fd(2, s); }
+#[allow(dead_code)]
+#[inline(always)]
+fn log_info(s: &str)  { sys_write_fd(3, s); }
+#[allow(dead_code)]
+#[inline(always)]
+fn log_debug(s: &str) { sys_write_fd(4, s); }
 
 fn user_ipc_send(dest: usize, msg: &crate::task::IpcMessage) -> isize {
     let mut res: isize;
