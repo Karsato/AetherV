@@ -13,7 +13,7 @@ pub struct TrapFrame {
 }
 
 // Intervalo de tiempo para la simulación del reloj (ajustado para QEMU)
-const TIMER_INTERVAL: u64 = 1_000_000;
+pub const TIMER_INTERVAL: u64 = 1_000_000;
 
 #[no_mangle]
 pub extern "C" fn rust_trap_handler(tf: &mut TrapFrame) {
@@ -36,6 +36,9 @@ pub extern "C" fn rust_trap_handler(tf: &mut TrapFrame) {
             5 => { // Supervisor Timer Interrupt (STI)
                 handle_timer_interrupt();
             }
+            9 => { // Supervisor External Interrupt (SEI)
+                handle_external_interrupt();
+            }
             _ => {
                 sbi::print_str("\n[Trap] Interrupción no controlada: ");
                 sbi::print_hex(code);
@@ -57,7 +60,13 @@ pub extern "C" fn rust_trap_handler(tf: &mut TrapFrame) {
             8 => { // Environment Call desde U-mode
                 let syscall_id = tf.regs[17]; // a7 es x17
                 match syscall_id {
-                    1 => { // sys_yield
+                    1 => { // sys_putchar (para que panics de U-mode impriman en consola)
+                        let c = tf.regs[10];
+                        sbi::sbi_putchar(c);
+                        tf.regs[10] = 0;
+                        tf.sepc += 4;
+                    }
+                    10 => { // sys_yield
                         tf.sepc += 4;
                         crate::task::yield_cpu();
                     }
@@ -163,6 +172,7 @@ pub extern "C" fn rust_trap_handler(tf: &mut TrapFrame) {
                 panic!("Excepción fatal no controlada.");
             }
         }
+
     }
 }
 
@@ -199,4 +209,71 @@ pub fn enable_timer_interrupt() {
     }
     // Programar el primer tick del temporizador
     sbi::sbi_set_timer(sbi::get_time() + TIMER_INTERVAL);
+}
+
+fn handle_external_interrupt() {
+    unsafe {
+        // Claim de la interrupción en el PLIC Contexto 1 (Hart 0 S-mode, registro Claim en 0x0c20_1004)
+        let claim_ptr = 0x0c20_1004 as *mut u32;
+        let irq = core::ptr::read_volatile(claim_ptr);
+
+        if irq != 0 {
+            sbi::print_str("[Trap] External Interrupt claimed: ");
+            sbi::print_hex(irq as usize);
+            sbi::print_str("\n");
+
+            // Si es IRQ 6 o 7 (Dispositivos VirtIO Input), notificar al Servidor de Entrada (Tarea 4)
+            if irq == 6 || irq == 7 {
+                crate::task::sys_ipc_notify(4, 1);
+            }
+
+            // Completar la interrupción escribiendo el IRQ de vuelta al registro Complete
+            core::ptr::write_volatile(claim_ptr, irq);
+        }
+    }
+}
+
+pub fn plic_init() {
+    unsafe {
+        let thresh_ptr = 0x0c20_1000 as *mut u32;
+        sbi::print_str("[PLIC] Threshold antes: ");
+        sbi::print_hex(core::ptr::read_volatile(thresh_ptr) as usize);
+        core::ptr::write_volatile(thresh_ptr, 0);
+        sbi::print_str(", despues: ");
+        sbi::print_hex(core::ptr::read_volatile(thresh_ptr) as usize);
+        sbi::print_str("\n");
+    }
+}
+
+pub fn plic_enable_irq(irq: u32) {
+    unsafe {
+        // Establecer prioridad del IRQ a 1 (no cero)
+        let priority_ptr = (0x0c00_0000 + (irq as usize) * 4) as *mut u32;
+        sbi::print_str("[PLIC] Prioridad IRQ ");
+        sbi::print_hex(irq as usize);
+        sbi::print_str(" antes: ");
+        sbi::print_hex(core::ptr::read_volatile(priority_ptr) as usize);
+        core::ptr::write_volatile(priority_ptr, 1);
+        sbi::print_str(", despues: ");
+        sbi::print_hex(core::ptr::read_volatile(priority_ptr) as usize);
+        sbi::print_str("\n");
+
+        // Habilitar el IRQ en el registro Enable del PLIC para Hart 0 S-mode (Contexto 1)
+        let enable_ptr = (0x0c00_2080 + ((irq as usize) / 32) * 4) as *mut u32;
+        let mask = 1u32 << (irq % 32);
+        sbi::print_str("[PLIC] Enable antes: ");
+        sbi::print_hex(core::ptr::read_volatile(enable_ptr) as usize);
+        let val = core::ptr::read_volatile(enable_ptr);
+        core::ptr::write_volatile(enable_ptr, val | mask);
+        sbi::print_str(", despues: ");
+        sbi::print_hex(core::ptr::read_volatile(enable_ptr) as usize);
+        sbi::print_str("\n");
+    }
+}
+
+pub fn enable_external_interrupt() {
+    unsafe {
+        // Habilitar Supervisor External Interrupts en sie (bit 9 es SEIE)
+        core::arch::asm!("csrs sie, {}", in(reg) (1 << 9));
+    }
 }

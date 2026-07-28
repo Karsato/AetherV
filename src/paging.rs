@@ -207,6 +207,16 @@ pub fn init() {
         &mut allocator,
     );
 
+    // 1b. Mapeo PLIC MMIO (0x0c00_0000)
+    map_range(
+        unsafe { &mut KERNEL_PGTABLE },
+        0x0c00_0000,
+        0x0c00_0000,
+        0x0040_0000, // 4MB
+        PTE_R | PTE_W,
+        &mut allocator,
+    );
+
     // 2. Mapeo VirtIO MMIO (0x1000_1000 - 0x1000_9000) - R-W-U para permitir drivers en U-mode
     map_range(
         unsafe { &mut KERNEL_PGTABLE },
@@ -216,6 +226,15 @@ pub fn init() {
         PTE_R | PTE_W | PTE_U,
         &mut allocator,
     );
+
+    // Detectar y registrar el dispositivo de teclado VirtIO Keyboard (ID 18)
+    if let Some(base) = crate::drivers::input::find_keyboard_device() {
+        sbi::print_str("[Paging] Teclado VirtIO Keyboard detectado en base MMIO: ");
+        sbi::print_hex(base);
+        sbi::print_str("\n");
+    } else {
+        sbi::print_str("[Paging] Teclado VirtIO Keyboard NO detectado.\n");
+    }
 
     // 3. Mapeo OpenSBI (0x8000_0000 - 0x8020_0000) - R-X
     map_range(
