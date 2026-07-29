@@ -52,11 +52,7 @@ pub fn shell_task() {
         user_ipc_recv(wm_id, &mut reply);
     };
 
-    let mut last_was_empty = false;
     loop {
-        if last_was_empty {
-            user_yield();
-        }
         let req = IpcMessage {
             sender: 0,
             msg_type: INPUT_CMD_GET_KEY,
@@ -65,12 +61,22 @@ pub fn shell_task() {
             payload: [0; 32],
         };
 
-        last_was_empty = false;
         if user_ipc_send(input_task_id, &req) == 0 {
             let mut reply = IpcMessage { sender: 0, msg_type: 0, length: 0, reserved: 0, payload: [0; 32] };
             if user_ipc_recv(input_task_id, &mut reply) == 0 {
                 if reply.msg_type == INPUT_RESP_KEY {
                     let c = reply.payload[0] as char;
+
+                    // Siempre notificar al Window Manager para mantener el renderizado en sincronía
+                    let mut key_msg = IpcMessage {
+                        sender: 0,
+                        msg_type: 2004,
+                        length: 1,
+                        reserved: 0,
+                        payload: [0; 32],
+                    };
+                    key_msg.payload[0] = c as u8;
+                    user_ipc_send(wm_task_id, &key_msg);
 
                     if c == '\n' || c == '\r' {
                         user_print("\n");
@@ -133,28 +139,15 @@ pub fn shell_task() {
                         if let Some(s) = c.encode_utf8(&mut single_char).get(..) {
                             user_print(s);
                         }
-
-                        // Notificar tecla individual al WM para renderizado en tiempo real
-                        let mut key_msg = IpcMessage {
-                            sender: 0,
-                            msg_type: 2004,
-                            length: 1,
-                            reserved: 0,
-                            payload: [0; 32],
-                        };
-                        key_msg.payload[0] = c as u8;
-                        let mut reply_wm = IpcMessage { sender: 0, msg_type: 0, length: 0, reserved: 0, payload: [0; 32] };
-                        user_ipc_send(wm_task_id, &key_msg);
-                        user_ipc_recv(wm_task_id, &mut reply_wm);
                     }
                 } else if reply.msg_type == INPUT_RESP_EMPTY {
-                    last_was_empty = true;
+                    user_yield();
                 }
             } else {
-                last_was_empty = true;
+                user_yield();
             }
         } else {
-            last_was_empty = true;
+            user_yield();
         }
     }
 }

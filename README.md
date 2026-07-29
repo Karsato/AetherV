@@ -13,6 +13,15 @@ A minimal, bare-metal RISC-V 64-bit kernel written in Rust (`#![no_std]`, `#![no
 
 ---
 
+## 📸 Screenshot
+
+Here is the AetherV OS U-Mode Interactive Shell running and accepting commands:
+
+![AetherV OS Shell](screenshot.png)
+
+---
+
+
 ## 🗺️ Memory Map & Boot Details
 
 ```

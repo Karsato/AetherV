@@ -11,6 +11,7 @@ use crate::drivers;
 pub static mut KEY_BUFFER: [char; 64] = ['\0'; 64];
 static mut KEY_HEAD: usize = 0;
 static mut KEY_TAIL: usize = 0;
+static mut SHIFT_PRESSED: bool = false;
 
 pub fn push_key(c: char) {
     unsafe {
@@ -33,27 +34,33 @@ pub fn pop_key() -> Option<char> {
     }
 }
 
-pub fn keycode_to_char(code: u16) -> Option<char> {
-    match code {
-        2  => Some('1'), 3  => Some('2'), 4  => Some('3'), 5  => Some('4'),
-        6  => Some('5'), 7  => Some('6'), 8  => Some('7'), 9  => Some('8'),
-        10 => Some('9'), 11 => Some('0'), 12 => Some('-'), 13 => Some('='),
-        14 => Some('\x08'), // Backspace
-        15 => Some('\t'),
-        16 => Some('q'), 17 => Some('w'), 18 => Some('e'), 19 => Some('r'),
-        20 => Some('t'), 21 => Some('y'), 22 => Some('u'), 23 => Some('i'),
-        24 => Some('o'), 25 => Some('p'), 26 => Some('['), 27 => Some(']'),
-        28 => Some('\n'), // Enter
-        30 => Some('a'), 31 => Some('s'), 32 => Some('d'), 33 => Some('f'),
-        34 => Some('g'), 35 => Some('h'), 36 => Some('j'), 37 => Some('k'),
-        38 => Some('l'), 39 => Some(';'), 40 => Some('\''), 41 => Some('`'),
-        44 => Some('z'), 45 => Some('x'), 46 => Some('c'), 47 => Some('v'),
-        48 => Some('b'), 49 => Some('n'), 50 => Some('m'), 51 => Some(','),
-        52 => Some('.'), 53 => Some('/'),
-        57 => Some(' '),
-        _ => None,
+pub fn keycode_to_char(code: u16, shift: bool) -> Option<char> {
+    const NORMAL_MAP: [char; 58] = [
+        '\0', '\0', '1',  '2',  '3',  '4',  '5',  '6',  '7',  '8',  '9',  '0',  '-',  '=', 
+        '\x08', '\t', 'q',  'w',  'e',  'r',  't',  'y',  'u',  'i',  'o',  'p',  '[',  ']', 
+        '\n', '\0', 'a',  's',  'd',  'f',  'g',  'h',  'j',  'k',  'l',  ';',  '\'', '`', 
+        '\0', '\0', 'z',  'x',  'c',  'v',  'b',  'n',  'm',  ',',  '.',  '/',  '\0', '\0', 
+        '\0', ' '
+    ];
+
+    const SHIFT_MAP: [char; 58] = [
+        '\0', '\0', '!',  '@',  '#',  '$',  '%',  '^',  '/',  '*',  '(',  '=',  '_',  '+', 
+        '\x08', '\t', 'Q',  'W',  'E',  'R',  'T',  'Y',  'U',  'I',  'O',  'P',  '{',  '}', 
+        '\n', '\0', 'A',  'S',  'D',  'F',  'G',  'H',  'J',  'K',  'L',  ':',  '"',  '~', 
+        '\0', '\0', 'Z',  'X',  'C',  'V',  'B',  'N',  'M',  '<',  '>',  '?',  '\0', '\0', 
+        '\0', ' '
+    ];
+
+    let idx = code as usize;
+    if idx < 58 {
+        let c = if shift { SHIFT_MAP[idx] } else { NORMAL_MAP[idx] };
+        if c != '\0' {
+            return Some(c);
+        }
     }
+    None
 }
+
 
 pub fn input_driver_server() {
     log_info("[Input Server] Iniciando inicialización en U-Mode...\n");
@@ -91,10 +98,17 @@ pub fn input_driver_server() {
         if res == 0 {
             if msg.sender == IPC_SENDER_NOTIFICATION {
                 drivers::input::process_events(|event| {
-                    if event.event_type == 1 && (event.value == 1 || event.value == 2) {
-                        if let Some(c) = keycode_to_char(event.code) {
-                            log_debug("[Input Server] Tecla detectada y encolada.\n");
-                            push_key(c);
+                    if event.event_type == 1 {
+                        if event.code == 42 || event.code == 54 {
+                            unsafe {
+                                SHIFT_PRESSED = event.value == 1 || event.value == 2;
+                            }
+                        }
+                        if event.value == 1 || event.value == 2 {
+                            if let Some(c) = keycode_to_char(event.code, unsafe { SHIFT_PRESSED }) {
+                                log_debug("[Input Server] Tecla detectada y encolada.\n");
+                                push_key(c);
+                            }
                         }
                     }
                 });

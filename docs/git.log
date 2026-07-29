@@ -1,0 +1,202 @@
+commit 0b4a1dc0a8bc968be7a6b66a06b3750db2310be3
+Author: carlos <carlos.saport@gmail.com>
+Date:   Tue Jul 28 13:36:46 2026 +0200
+
+    fix(stdio): remove key-press trailing newlines for single-line shell input
+
+commit 1b0fe92683e8cda96ef069dd1d1ee14f9c89efd9
+Author: carlos <carlos.saport@gmail.com>
+Date:   Tue Jul 28 13:28:15 2026 +0200
+
+    feat(stdio): implement FD-based stdio redirection and log level filtering
+
+commit ca9db325dffef0e9035735b3321cf857866f333f
+Author: carlos <carlos.saport@gmail.com>
+Date:   Tue Jul 28 13:05:55 2026 +0200
+
+    feat(stdio): complete Phase 7.5 - STDIO FD redirection, log levels, and driver ABI fix
+
+commit 02671c6e99663c8f16b050c08d533df00fd5987f
+Author: carlos <carlos.saport@gmail.com>
+Date:   Tue Jul 28 12:54:01 2026 +0200
+
+    docs(okf): add Phase 7.5 specification for STDIO redirection and LogLevel filtering
+
+commit 96644add970fa87786359b2b6676d884424c8ab3
+Author: carlos <carlos.saport@gmail.com>
+Date:   Tue Jul 28 12:45:52 2026 +0200
+
+    feat(shell): complete Phase 7 - Interactive U-Mode Shell and dynamic debug logs
+
+commit 394407a72568dbcf2fe32c1c1c42ec484f89d06f
+Author: carlos <carlos.saport@gmail.com>
+Date:   Tue Jul 28 12:18:22 2026 +0200
+
+    feat(shell): complete Phase 7 - Interactive U-Mode Shell Task and IPC integrations
+
+commit 8b2c43f506174a6f4edef7bc20097b978df42de8
+Author: carlos <carlos.saport@gmail.com>
+Date:   Tue Jul 28 10:40:37 2026 +0200
+
+    feat(vfs): complete Phase 6 - VFS Server in U-mode with RAMDisk, vfs_client & MAX_TASKS expanded to 16
+
+commit fdf74050fa38affd3acff125b98e0e5b3389e711
+Author: carlos <carlos.saport@gmail.com>
+Date:   Tue Jul 28 10:26:25 2026 +0200
+
+    feat(vfs): implement U-Mode vfs_server with RAMDisk and register Task 7
+
+commit 57ac696542a8990329061f916a95f152e957d40c
+Author: carlos <carlos.saport@gmail.com>
+Date:   Tue Jul 28 10:15:09 2026 +0200
+
+    feat(vfs): add IPC command constants and message builder helpers for VFS Server
+
+commit 1deda5f1ada78fa016c4bdefca4eabe9a41e675e
+Merge: 0a29271 5ce3f4d
+Author: carlos <carlos.saport@gmail.com>
+Date:   Tue Jul 28 09:57:02 2026 +0200
+
+    Merge branch 'feature/05-window-manager'
+
+commit 5ce3f4d79c1ba46f0fca9e49e8367285a6c9a939
+Author: carlos <carlos.saport@gmail.com>
+Date:   Tue Jul 28 09:56:43 2026 +0200
+
+    feat(wm): complete Phase 5 - User-Mode Window Manager & low-power WFI idle loop
+    
+    - Fix IPC pointer passing in inline assembly to prevent LLVM optimization drops.
+    - Implement S-Mode timer rescheduling + WFI instruction in idle loop to solve 100% CPU spinning.
+    - Add retry loops with user_yield() for Nameserver service lookups.
+    - Fix payload length string matching panics in window clients.
+
+commit 68a26d0ac8fa4329ffe501be116b1e4255571b54
+Author: carlos <carlos.saport@gmail.com>
+Date:   Mon Jul 27 16:03:59 2026 +0200
+
+    docs/aetherv_brief_roadmap.okf.md: Añadido archivo roadmap brief.
+    
+    Co-authored-by: aider (ollama_chat/qwen2.5-coder:3b) <aider@aider.chat>
+
+commit 5a119ad2a000eae6bd83a0e4dfe06743f87cc5c7
+Author: carlos <carlos.saport@gmail.com>
+Date:   Mon Jul 27 11:31:47 2026 +0200
+
+    feat: implement VirtIO input driver in U-Mode and WFI low-power suspend
+
+commit 0a29271323663b5ff612a8ae09a3bc2ad4f14a37
+Merge: 971dbda 9acf826
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 17:17:59 2026 +0200
+
+    Release 1.0-alpha: Complete Phase 4 (Modern Microkernel, IPC & Nameserver)
+
+commit 9acf826e589f63b1b4d21710417b32aec82ee5db
+Merge: a6c950d 72bf20c
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 17:17:49 2026 +0200
+
+    Merge branch 'feature/06-ipc-microkernel' into develop
+
+commit 72bf20cd35cdc25d23e63f98e48960f0f026126f
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 17:17:43 2026 +0200
+
+    feat(microkernel): implement U-Mode Nameserver (Service Registry) and complete Phase 4
+
+commit b860df0c9e6342188e2803adf462e4bea6ad63fd
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 16:57:16 2026 +0200
+
+    feat(microkernel): user-space virtio-gpu driver with synchronous IPC & register robustness fixes
+
+commit b8b879a8024964aa582cf3c30bfd121f13bb2787
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 16:19:08 2026 +0200
+
+    docs: update Phase 4 OKF spec roadmap status and details
+
+commit e48187b662930e600530becc0b6ae4856f42c883
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 16:18:44 2026 +0200
+
+    feat: implement high-speed synchronous rendezvous IPC message passing (send, recv, reply_recv, notify) and validate with client-server task scenario
+
+commit 17a4ad216dddede85b756a3fe4314ecc6e3b1053
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 16:11:07 2026 +0200
+
+    feat: implement user-mode (U-Mode) task support, privilege transition via sret, stack pointer swapping with sscratch, and U-Mode system calls (yield, exit, print)
+
+commit ae138a0635db57a56c33a934608a2ad6c8357cfb
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 16:04:16 2026 +0200
+
+    docs: add Phase 4 design and planning specification in OKF format
+
+commit a6c950d2318afc862b46facc45f3f23996974a25
+Merge: 9fc7797 4f2a132
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 16:01:41 2026 +0200
+
+    Merge branch 'feature/05-virtio-graphics' into develop
+
+commit 4f2a1326ead932d41aa739c82dd934ed83a34fbe
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 15:23:45 2026 +0200
+
+    Fix: Corregidos los códigos de comando de VirtIO GPU en el controlador y el documento de diseño de la Fase 3, e implementado mapeo de página por página de Framebuffer (300 entradas de 4KB) para inicializar exitosamente la salida scanout
+
+commit 9fc77974941002f152b77c50ca05233991f59636
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 15:01:31 2026 +0200
+
+    docs: add Phase 3 design and planning specification in OKF format
+
+commit 343fc133cc191ccc2a64f5a2746caa1904e7f5ee
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 15:00:31 2026 +0200
+
+    feat: implement zero-allocation FDT parser and hardware discovery
+
+commit f125baadde664e15676d74f94bb1a1fc41ac50e8
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 14:49:40 2026 +0200
+
+    feat: implement cooperative and preemptive multitasking with round-robin scheduler
+
+commit 0a8211d52013a08c0975b6a9fd294d005b2bfbb1
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 14:46:05 2026 +0200
+
+    docs: add Phase 2 design and planning specification in OKF format
+
+commit 4ac30cab4de3bf3aec0a5ef10ca510ccec0d7f9d
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 14:42:23 2026 +0200
+
+    feat: implement Sv39 virtual memory paging and identity mapping
+
+commit 47021e67b98626a226ecf241f5d3fc00f4ba40be
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 14:40:23 2026 +0200
+
+    feat: implement low-level S-mode trap handler and timer ticks
+
+commit 971dbda227727cdcde8589b3c5d5881da8e7a1ef
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 11:20:17 2026 +0200
+
+    docs: add AetherV OS branching strategy & roadmap OKF
+
+commit 043ee5bdeeebfcc5566a97e90c616dbf3e93eb53
+Author: carlos <carlos.saport@gmail.com>
+Date:   Sun Jul 26 11:10:38 2026 +0200
+
+    Initial commit: Minimal RISC-V Rust Kernel
+
+commit 6d82590f1ad5819c198a053d8dffe29914527588
+Author: Karsato <carlos.saport@gmail.com>
+Date:   Sun Jul 26 14:26:38 2026 +0200
+
+    Initial commit
