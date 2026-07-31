@@ -4,8 +4,8 @@ use crate::sbi;
 
 core::arch::global_asm!(include_str!("switch.S"));
 
-pub static mut LOG_LEVEL: u8 = 0; // 0=OFF/Quiet, 1=ERROR, 2=INFO, 3=DEBUG
-pub static mut DEBUG_LOGS: bool = false;
+pub static mut LOG_LEVEL: u8 = 3; // 0=OFF/Quiet, 1=ERROR, 2=INFO, 3=DEBUG
+pub static mut DEBUG_LOGS: bool = true;
 
 #[inline(always)]
 pub fn get_log_level() -> u8 {
