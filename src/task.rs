@@ -74,6 +74,7 @@ pub struct Task {
     pub ipc_partner: usize,     // ID de la tarea con la que intenta comunicarse
     pub ipc_buffer_ptr: usize,  // Puntero virtual al mensaje IpcMessage
     pub ipc_notifications: u32,  // Notificaciones asíncronas acumuladas
+    pub last_sender: usize,      // Último emisor atendido por esta tarea (Round-Robin IPC)
 }
 
 impl Task {
@@ -88,6 +89,7 @@ impl Task {
             ipc_partner: 0,
             ipc_buffer_ptr: 0,
             ipc_notifications: 0,
+            last_sender: 0,
         }
     }
 }
@@ -407,17 +409,16 @@ pub fn sys_ipc_recv(src_id: usize, msg_ptr: usize) -> isize {
         }
 
         // Buscar si hay algún emisor bloqueado queriendo enviarnos un mensaje
-        // Usar búsqueda Round-Robin para evitar la inanición (starvation) de tareas con IDs altos
+        // Usar búsqueda Round-Robin propia de la tarea para evitar la inanición (starvation) de tareas con IDs altos
         let mut found_sender_id = None;
-        static mut LAST_SENDER: usize = 0;
-        let start = (LAST_SENDER + 1) % MAX_TASKS;
+        let start = (receiver.last_sender + 1) % MAX_TASKS;
         for offset in 0..MAX_TASKS {
             let i = (start + offset) % MAX_TASKS;
             let t = &SCHEDULER.tasks[i];
             if t.status == TaskStatus::BlockedSend && t.ipc_partner == receiver_id {
                 if src_id == IPC_WILDCARD || src_id == i {
                     found_sender_id = Some(i);
-                    LAST_SENDER = i;
+                    receiver.last_sender = i;
                     break;
                 }
             }
