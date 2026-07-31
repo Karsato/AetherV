@@ -388,12 +388,17 @@ pub fn sys_ipc_recv(src_id: usize, msg_ptr: usize) -> isize {
         }
 
         // Buscar si hay algún emisor bloqueado queriendo enviarnos un mensaje
+        // Usar búsqueda Round-Robin para evitar la inanición (starvation) de tareas con IDs altos
         let mut found_sender_id = None;
-        for i in 0..MAX_TASKS {
+        static mut LAST_SENDER: usize = 0;
+        let start = (LAST_SENDER + 1) % MAX_TASKS;
+        for offset in 0..MAX_TASKS {
+            let i = (start + offset) % MAX_TASKS;
             let t = &SCHEDULER.tasks[i];
             if t.status == TaskStatus::BlockedSend && t.ipc_partner == receiver_id {
                 if src_id == IPC_WILDCARD || src_id == i {
                     found_sender_id = Some(i);
+                    LAST_SENDER = i;
                     break;
                 }
             }
