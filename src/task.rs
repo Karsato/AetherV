@@ -128,8 +128,27 @@ impl SimpleScheduler {
         }
     }
 
+    pub fn dump_tasks(&self) {
+        sbi::print_str("TASKS: ");
+        for i in 0..MAX_TASKS {
+            let status_char = match self.tasks[i].status {
+                TaskStatus::Unused => 'U',
+                TaskStatus::Ready => 'y',
+                TaskStatus::Running => 'R',
+                TaskStatus::BlockedSend => 'S',
+                TaskStatus::BlockedRecv => 'r',
+                TaskStatus::Exited => 'E',
+            };
+            sbi::sbi_putchar(status_char as usize);
+            sbi::sbi_putchar((b'0' + (self.tasks[i].ipc_partner as u8)) as usize);
+            sbi::sbi_putchar(' ' as usize);
+        }
+        sbi::print_str("\n");
+    }
+
     // Cambiar de tarea (Round-Robin)
     pub fn schedule(&mut self) {
+        self.dump_tasks();
         loop {
             let current_idx = self.current_id;
             let mut next_idx = (current_idx + 1) % MAX_TASKS;
