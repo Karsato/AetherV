@@ -8,6 +8,7 @@ pub mod vfs_server;
 pub mod shell;
 pub mod clients;
 pub mod net_server;
+pub mod block_server;
 
 
 // ---------------------------------------------------------------------------
@@ -50,6 +51,13 @@ pub const NET_CMD_PING:     u32 = 4003;
 pub const NET_RESP_OK:      u32 = 200;
 pub const NET_RESP_ERR:     u32 = 400;
 pub const NET_RESP_PING_REPLY: u32 = 201;
+
+// Códigos de comando (Block Server)
+pub const BLOCK_CMD_READ:  u32 = 5001;
+pub const BLOCK_CMD_WRITE: u32 = 5002;
+pub const BLOCK_RESP_OK:   u32 = 200;
+pub const BLOCK_RESP_ERR:  u32 = 400;
+
 
 
 

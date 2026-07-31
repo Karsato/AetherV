@@ -93,7 +93,7 @@ pub fn shell_task() {
                                 shell_out("Cmds: help, ls, cat <file>, netstat, curl, ping <ip>, clear, info", wm_task_id);
                                 user_print("\n");
                             } else if cmd_str == "ls" {
-                                shell_out("/readme.txt  /config.sys", wm_task_id);
+                                shell_out("/readme.txt  /config.sys  /persist.dat", wm_task_id);
                                 user_print("\n");
                             } else if cmd_str.starts_with("cat ") {
                                 let path = &cmd_str[4..];
