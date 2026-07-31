@@ -1,7 +1,7 @@
 // src/apps/net_server.rs
 #![allow(static_mut_refs)]
 
-use super::{user_ipc_recv, user_ipc_send, log_info, ns_register, NET_CMD_STATUS, NET_CMD_GET_HTTP, NET_RESP_OK, NET_RESP_ERR};
+use super::{user_ipc_recv, user_ipc_send, log_info, ns_register, NET_CMD_STATUS, NET_CMD_GET_HTTP, NET_CMD_PING, NET_RESP_OK, NET_RESP_ERR, NET_RESP_PING_REPLY};
 use crate::task::{IpcMessage, IPC_WILDCARD};
 use crate::drivers::virtio::find_device;
 
@@ -91,6 +91,24 @@ pub fn net_server_task() {
                     // Responder con una cabecera de monitor HTTP minimalista
                     let http_data = b"HTTP/1.1 200 OK\nSrv: AetherV-Web";
                     reply.payload[0..32].copy_from_slice(&http_data[0..32]);
+
+                    user_ipc_send(msg.sender as usize, &reply);
+                }
+                NET_CMD_PING => {
+                    unsafe {
+                        PACKETS_RX += 1;
+                        PACKETS_TX += 1;
+                    }
+
+                    let mut reply = IpcMessage {
+                        sender: 0,
+                        msg_type: NET_RESP_PING_REPLY,
+                        length: 32,
+                        reserved: 0,
+                        payload: [0; 32],
+                    };
+                    // Devolver el payload intacto (contiene la IP a la que se hace ping)
+                    reply.payload.copy_from_slice(&msg.payload);
 
                     user_ipc_send(msg.sender as usize, &reply);
                 }

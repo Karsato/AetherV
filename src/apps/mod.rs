@@ -46,8 +46,11 @@ pub const VFS_RESP_ERR:  u32 = 400;
 // Códigos de comando (Net Server)
 pub const NET_CMD_STATUS:   u32 = 4001;
 pub const NET_CMD_GET_HTTP: u32 = 4002;
+pub const NET_CMD_PING:     u32 = 4003;
 pub const NET_RESP_OK:      u32 = 200;
 pub const NET_RESP_ERR:     u32 = 400;
+pub const NET_RESP_PING_REPLY: u32 = 201;
+
 
 
 // ---------------------------------------------------------------------------
