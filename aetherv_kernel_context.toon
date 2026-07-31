@@ -1,0 +1,60 @@
+meta:
+  proj: "AetherV OS (riscv64gc-unknown-none-elf)"
+  env: "QEMU virt / OpenSBI S-mode / no_std / no_main"
+  cur_phase: "07.5 (STDIO & LogLevels Complete)"
+  next_phase: "08 / Modularization & App Runtime"
+  mem_model: "Sv39 Paging | Alias U-Mode VA = PA - 0x40000000"
+
+architecture_contracts:
+  priv_levels:
+    S-mode: "Kernel core (Scheduler, Paging, Traps, PLIC, SBI)"
+    U-mode: "All servers & apps (Ring 3 isolation, PTE_U flags)"
+  syscalls_abi (ecall a7):
+    1: "sys_putchar(char)"
+    2: "sys_exit()"
+    3: "sys_write(fd, ptr, len) [fd: 1=stdout, 2=stderr, 3=info, 4=debug]"
+    4: "sys_ipc_send(dest, msg_ptr)"
+    5: "sys_ipc_recv(src_wildcard, msg_ptr)"
+    6: "sys_ipc_reply_recv(dest, reply_ptr, src, recv_ptr)"
+    7: "sys_ipc_notify(dest, bitmask)"
+    10: "sys_yield()"
+  ipc_message_layout (32-bit aligned, 48B total):
+    sender: u32        # Filled by kernel
+    msg_type: u32      # Command / Response ID
+    length: u32        # Data len in payload
+    reserved: u32      # Alignment
+    payload: [u8; 32]  # Zero-copy fast inline data
+
+task_table_pid_map:
+  PID_0: { name: "Idle/Main", mode: "S-mode", role: "Cooperative yield & WFI loop" }
+  PID_1: { name: "gpu_driver_srv", mode: "U-mode", role: "VirtIO GPU 2D, FB 640x480" }
+  PID_2: { name: "window_manager", mode: "U-mode", role: "Compositor, window stack, render" }
+  PID_3: { name: "nameserver", mode: "U-mode", role: "Service Registry ('display','wm','input','vfs')" }
+  PID_4: { name: "input_driver_srv", mode: "U-mode", role: "VirtIO Input, IRQ 6/7 PLIC notify" }
+  PID_5: { name: "window_client_1", mode: "U-mode", role: "Demo: Bouncing Ball" }
+  PID_6: { name: "window_client_2", mode: "U-mode", role: "Demo: Performance Counter" }
+  PID_7: { name: "vfs_server", mode: "U-mode", role: "RAMDisk VFS (/readme.txt, /config.sys)" }
+  PID_8: { name: "vfs_client", mode: "U-mode", role: "Passive client yield loop" }
+  PID_9: { name: "shell_task", mode: "U-mode", role: "Interactive Shell (help, ls, cat, clear, info)" }
+
+codebase_index:
+  src/entry.rs: "Boot stack setup (8KB), jump to rust_main"
+  src/sbi.rs: "SBI Putchar & Timer CSR interface"
+  src/main.rs: "BSS clear, FDT parse, subsystem init, task instantiations, U-mode tasks code"
+  src/task.rs: "SimpleScheduler (MAX_TASKS=16), PCB, TaskContext, LOG_LEVEL, IPC dispatchers"
+  src/trap.rs: "rust_trap_handler, syscall multiplexer, PLIC claim/complete, Timer STI"
+  src/trap.S: "Low-level trap entry/return, sscratch stack swap (U<->K), t0 (x5) preservation"
+  src/switch.S: "Context switch switch_to(old, new) & task_entry_helper"
+  src/paging.rs: "Sv39 PageTable, SimpleFrameAllocator, map_range with PTE_U alias"
+  src/fdt.rs: "Zero-alloc FDT/DTB parser, bootargs reader for loglevel"
+  src/drivers/virtio.rs: "MMIO VirtIO Legacy/Modern structs & find_device"
+  src/drivers/gpu.rs: "VirtIO GPU commands, FRAMEBUFFER [u32; 640*480], font_8x8"
+  src/drivers/input.rs: "VirtIO Keyboard eventq, process_events scancode decoder"
+
+stdio_loglevel_rules:
+  bootargs: "loglevel=0 (Quiet), loglevel=1 (Error), loglevel=2 (Info), loglevel=3 (Debug)"
+  routing:
+    FD_1: "stdout -> Always printed to console (Shell prompt/output)"
+    FD_2: "stderr -> Printed if LOG_LEVEL >= 1"
+    FD_3: "log_info -> Printed if LOG_LEVEL >= 2"
+    FD_4: "log_debug -> Printed if LOG_LEVEL >= 3"

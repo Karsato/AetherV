@@ -7,6 +7,8 @@ pub mod wm;
 pub mod vfs_server;
 pub mod shell;
 pub mod clients;
+pub mod net_server;
+
 
 // ---------------------------------------------------------------------------
 // Helpers y syscalls de U-Mode compartidos por todos los módulos
@@ -40,6 +42,13 @@ pub const VFS_CMD_CLOSE: u32 = 102;
 pub const VFS_CMD_LIST:  u32 = 103;
 pub const VFS_RESP_OK:   u32 = 200;
 pub const VFS_RESP_ERR:  u32 = 400;
+
+// Códigos de comando (Net Server)
+pub const NET_CMD_STATUS:   u32 = 4001;
+pub const NET_CMD_GET_HTTP: u32 = 4002;
+pub const NET_RESP_OK:      u32 = 200;
+pub const NET_RESP_ERR:     u32 = 400;
+
 
 // ---------------------------------------------------------------------------
 // Syscall wrappers

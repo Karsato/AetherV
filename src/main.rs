@@ -20,6 +20,7 @@ use apps::{
     vfs_server::vfs_server,
     shell::shell_task,
     clients::{window_client_1, window_client_2, vfs_client},
+    net_server::net_server_task,
 };
 
 #[no_mangle]
@@ -72,6 +73,7 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     let user_entry_va7 = (vfs_server            as *const () as usize) - 0x40000000;
     let user_entry_va8 = (vfs_client            as *const () as usize) - 0x40000000;
     let user_entry_va9 = (shell_task            as *const () as usize) - 0x40000000;
+    let user_entry_va10 = (net_server_task      as *const () as usize) - 0x40000000;
 
     task::create_user_task(1, user_entry_va1); // GPU Server
     task::create_user_task(2, user_entry_va2); // Window Manager
@@ -82,7 +84,8 @@ pub extern "C" fn rust_main(_hart_id: usize, _fdt_ptr: usize) -> ! {
     task::create_user_task(7, user_entry_va7); // VFS Server
     task::create_user_task(8, user_entry_va8); // VFS Client (pasivo)
     task::create_user_task(9, user_entry_va9); // Shell
-    sbi::print_str("[Kernel] Tareas de usuario 1 a 9 creadas.\n");
+    task::create_user_task(10, user_entry_va10); // Net Server
+    sbi::print_str("[Kernel] Tareas de usuario 1 a 10 creadas.\n");
     sbi::print_str("[Kernel] Iniciando planificador multitarea...\n");
 
     // Warm-up cooperativo → luego WFI

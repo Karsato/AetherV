@@ -4,7 +4,8 @@ use super::{user_ipc_recv, user_ipc_send, user_print, log_info, user_yield,
             ns_lookup, make_vfs_open_msg,
             INPUT_CMD_GET_KEY, INPUT_RESP_KEY, INPUT_RESP_EMPTY,
             WM_CMD_DRAW_TEXT, WM_CMD_UPDATE,
-            VFS_CMD_READ, VFS_CMD_CLOSE, VFS_RESP_OK};
+            VFS_CMD_READ, VFS_CMD_CLOSE, VFS_RESP_OK,
+            NET_CMD_STATUS, NET_CMD_GET_HTTP, NET_RESP_OK};
 use crate::task::IpcMessage;
 
 pub fn shell_task() {
@@ -25,7 +26,12 @@ pub fn shell_task() {
         user_yield();
     };
 
-    log_info("[Shell] Servicios 'vfs', 'input' y 'wm' vinculados.\n");
+    let net_task_id = loop {
+        if let Some(id) = ns_lookup("net") { break id; }
+        user_yield();
+    };
+
+    log_info("[Shell] Servicios 'vfs', 'input', 'wm' y 'net' vinculados.\n");
     user_print("aetherv-shell> ");
 
     let mut cmd_buf = [0u8; 32];
@@ -84,7 +90,7 @@ pub fn shell_task() {
                             let cmd_str = core::str::from_utf8(&cmd_buf[..cmd_len]).unwrap_or("");
 
                             if cmd_str == "help" {
-                                shell_out("Cmds: help, ls, cat <file>, clear, info", wm_task_id);
+                                shell_out("Cmds: help, ls, cat <file>, netstat, curl, clear, info", wm_task_id);
                                 user_print("\n");
                             } else if cmd_str == "ls" {
                                 shell_out("/readme.txt  /config.sys", wm_task_id);
@@ -114,11 +120,31 @@ pub fn shell_task() {
                                     shell_out("Err: File not found", wm_task_id);
                                 }
                                 user_print("\n");
+                            } else if cmd_str == "netstat" {
+                                let req = IpcMessage { sender: 0, msg_type: NET_CMD_STATUS, length: 0, reserved: 0, payload: [0; 32] };
+                                let mut reply = IpcMessage { sender: 0, msg_type: 0, length: 0, reserved: 0, payload: [0; 32] };
+                                if user_ipc_send(net_task_id, &req) == 0 && user_ipc_recv(net_task_id, &mut reply) == 0 && reply.msg_type == NET_RESP_OK {
+                                    shell_out("IP: 192.168.1.10 | RX/TX: Active | Dev: Simulated", wm_task_id);
+                                } else {
+                                    shell_out("Err: Net Service Unreachable", wm_task_id);
+                                }
+                                user_print("\n");
+                            } else if cmd_str == "curl" {
+                                let req = IpcMessage { sender: 0, msg_type: NET_CMD_GET_HTTP, length: 0, reserved: 0, payload: [0; 32] };
+                                let mut reply = IpcMessage { sender: 0, msg_type: 0, length: 0, reserved: 0, payload: [0; 32] };
+                                if user_ipc_send(net_task_id, &req) == 0 && user_ipc_recv(net_task_id, &mut reply) == 0 && reply.msg_type == NET_RESP_OK {
+                                    if let Ok(content) = core::str::from_utf8(&reply.payload[0..32]) {
+                                        shell_out(content, wm_task_id);
+                                    }
+                                } else {
+                                    shell_out("Err: Connection Failed", wm_task_id);
+                                }
+                                user_print("\n");
                             } else if cmd_str == "clear" {
                                 shell_out("", wm_task_id);
                                 user_print("\n");
                             } else if cmd_str == "info" {
-                                shell_out("AetherV OS v1.8 - RV64 Microkernel", wm_task_id);
+                                shell_out("AetherV OS v1.10-alpha - RV64 Net", wm_task_id);
                                 user_print("\n");
                             } else {
                                 shell_out("Unknown command", wm_task_id);

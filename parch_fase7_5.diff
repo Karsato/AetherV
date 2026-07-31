@@ -1,0 +1,19 @@
+--- a/src/task.rs
++++ b/src/task.rs
+@@ -4,3 +4,8 @@ use crate::sbi;
+ 
+ core::arch::global_asm!(include_str!("switch.S"));
+ 
++pub static mut LOG_LEVEL: u8 = 0; // 0=OFF/Quiet, 1=ERROR, 2=INFO, 3=DEBUG
+ pub static mut DEBUG_LOGS: bool = false;
++
++#[inline(always)]
++pub fn get_log_level() -> u8 {
++    unsafe { LOG_LEVEL }
++}
+ pub const IPC_WILDCARD: usize = usize::MAX;
+@@ -133,3 +138,3 @@ impl SimpleScheduler {
+                 // Imprimir traza de cambio de contexto
+-                if unsafe { DEBUG_LOGS } {
++                if get_log_level() >= 3 {
+                     sbi::print_str("[Scheduler] Cambiando de Tarea ");
