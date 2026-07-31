@@ -19,6 +19,24 @@ Here is the AetherV OS U-Mode Interactive Shell running and accepting commands:
 
 ![AetherV OS Shell](screenshot.png)
 
+### Make ping
+
+Use 'help' command.
+Do ping.
+
+```
+aetherv-shell> help
+Cmds: help, ls, cat <file>, netstat, curl, ping <ip>, clear, info
+aetherv-shell> netstat
+IP: 192.168.1.10 | RX/TX: Active | Dev: Simulated
+aetherv-shell> ping 8.8.8.8
+PING starting...
+64 bytes from 8.8.8.8: icmp_seq=1 ttl=64 time=0.42 ms
+64 bytes from 8.8.8.8: icmp_seq=2 ttl=64 time=0.42 ms
+64 bytes from 8.8.8.8: icmp_seq=3 ttl=64 time=0.42 ms
+Ping finished.
+aetherv-shell>
+```
 ---
 
 
