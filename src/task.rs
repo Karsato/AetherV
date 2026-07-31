@@ -4,8 +4,8 @@ use crate::sbi;
 
 core::arch::global_asm!(include_str!("switch.S"));
 
-pub static mut LOG_LEVEL: u8 = 3; // 0=OFF/Quiet, 1=ERROR, 2=INFO, 3=DEBUG
-pub static mut DEBUG_LOGS: bool = true;
+pub static mut LOG_LEVEL: u8 = 0; // 0=OFF/Quiet, 1=ERROR, 2=INFO, 3=DEBUG
+pub static mut DEBUG_LOGS: bool = false;
 
 #[inline(always)]
 pub fn get_log_level() -> u8 {
@@ -130,27 +130,8 @@ impl SimpleScheduler {
         }
     }
 
-    pub fn dump_tasks(&self) {
-        sbi::print_str("TASKS: ");
-        for i in 0..MAX_TASKS {
-            let status_char = match self.tasks[i].status {
-                TaskStatus::Unused => 'U',
-                TaskStatus::Ready => 'y',
-                TaskStatus::Running => 'R',
-                TaskStatus::BlockedSend => 'S',
-                TaskStatus::BlockedRecv => 'r',
-                TaskStatus::Exited => 'E',
-            };
-            sbi::sbi_putchar(status_char as usize);
-            sbi::sbi_putchar((b'0' + (self.tasks[i].ipc_partner as u8)) as usize);
-            sbi::sbi_putchar(' ' as usize);
-        }
-        sbi::print_str("\n");
-    }
-
     // Cambiar de tarea (Round-Robin)
     pub fn schedule(&mut self) {
-        self.dump_tasks();
         loop {
             let current_idx = self.current_id;
             let mut next_idx = (current_idx + 1) % MAX_TASKS;
