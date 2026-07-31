@@ -55,6 +55,7 @@ Adicionalmente, se integra el soporte del cliente en la consola interactiva (`sh
 2. **Protocolo IPC de Red**:
    * **`NET_CMD_STATUS` (4001)**: Solicita información de la dirección IP asignada, estadísticas de paquetes recibidos (RX) / enviados (TX) y el estatus de inicialización del driver de hardware.
    * **`NET_CMD_GET_HTTP` (4002)**: Solicita contenido de monitoreo del servidor web HTTP en formato de texto (ej. estadísticas del sistema).
+   * **`NET_CMD_PING` (4003)**: Envía una solicitud de ping ICMP simulada conteniendo la dirección IP de destino en el payload.
 
 ---
 
@@ -62,8 +63,8 @@ Adicionalmente, se integra el soporte del cliente en la consola interactiva (`sh
 
 - [x] **KR1.1:** Desarrollar `net_server_task` en espacio de usuario e integrarlo en la tabla de tareas del microkernel (ID de tarea 10).
 - [x] **KR1.2:** Implementar escaneo dinámico del bus VirtIO MMIO buscando tarjetas de red (Device ID 1).
-- [x] **KR1.3:** Añadir soporte IPC para obtención de estado de red (`NET_CMD_STATUS`) y peticiones HTTP simuladas (`NET_CMD_GET_HTTP`).
-- [x] **KR1.4:** Incorporar los comandos `netstat` y `curl` en la consola interactiva (`shell_task`) para realizar solicitudes a la pila de red en tiempo real.
+- [x] **KR1.3:** Añadir soporte IPC para obtención de estado de red (`NET_CMD_STATUS`), peticiones HTTP simuladas (`NET_CMD_GET_HTTP`) y pings ICMP (`NET_CMD_PING`).
+- [x] **KR1.4:** Incorporar los comandos `netstat`, `curl` y `ping <ip>` en la consola interactiva (`shell_task`) para realizar solicitudes a la pila de red en tiempo real.
 - [x] **KR1.5:** Garantizar una compilación exitosa y libre de fallos en la arquitectura RISC-V 64.
 
 ---
@@ -80,3 +81,13 @@ Adicionalmente, se integra el soporte del cliente en la consola interactiva (`sh
   aetherv-shell> curl
   HTTP/1.1 200 OK\nSrv: AetherV-Web
   ```
+* **`ping <ip>`**: Envía 3 pings ICMP simulados secuenciales al host/IP especificado:
+  ```
+  aetherv-shell> ping 8.8.8.8
+  PING starting...
+  64 bytes from 8.8.8.8: icmp_seq=1 ttl=64 time=0.42 ms
+  64 bytes from 8.8.8.8: icmp_seq=2 ttl=64 time=0.42 ms
+  64 bytes from 8.8.8.8: icmp_seq=3 ttl=64 time=0.42 ms
+  Ping finished.
+  ```
+
